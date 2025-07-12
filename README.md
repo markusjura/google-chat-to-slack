@@ -1,3 +1,3 @@
-# Slack Importer
+# Chat Migrator
 
-This node script is importing channels and messages from Google Chat to Slack.
+This node script `chatmig` is migrating channels, messages, and threads from Google Chat to Slack.

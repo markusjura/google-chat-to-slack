@@ -1,12 +1,12 @@
 {
-  "name": "slack-importer",
+  "name": "chatmig",
   "version": "1.0.0",
-  "description": "Node script to import channels and messages from Google Chat to Slack.",
+  "description": "Node script to migrate channels, threads, and messages from Google Chat to Slack.",
   "main": "index.js",
   "scripts": {
     "test": "vitest",
     "lint": "eslint . --ext .ts",
-    "start": "ts-node bin/run.ts"
+    "start": "ts-node bin/chatmig.ts"
   },
   "dependencies": {
     "ts-node": "^10.9.2",
