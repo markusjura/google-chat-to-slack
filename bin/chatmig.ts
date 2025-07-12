@@ -1,6 +1,5 @@
 #!/usr/bin/env ts-node
 
-import { greet } from '../src/services/greeting';
+import { getParser } from '../src/cli/parser';
 
-const person = 'World';
-console.log(greet(person));
+void getParser().argv;

@@ -14,10 +14,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": [
-    "eslint.config.js",
-    "**/*.ts",
-    "**/*.js"
-  ],
+  "include": ["eslint.config.js", "**/*.ts", "**/*.js"],
   "exclude": ["node_modules"]
 }

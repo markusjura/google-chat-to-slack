@@ -1,4 +1,4 @@
-# General 
+# General
 
 - Every time you choose to apply rules, explicitly state the rules in the output. Be concise and to the point. You can abbreviate the rule description to a single word or phrase.
 - Write concise, technical TypeScript code with accurate examples
