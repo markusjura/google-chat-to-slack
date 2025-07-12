@@ -1,13 +1,33 @@
 {
   "name": "slack-importer",
   "version": "1.0.0",
-  "description": "",
+  "description": "Node script to import channels and messages from Google Chat to Slack.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest",
+    "lint": "eslint . --ext .ts",
+    "start": "ts-node bin/run.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "dependencies": {
+    "ts-node": "^10.9.2",
+    "zod": "^3.25.64"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.36.0",
+    "@typescript-eslint/parser": "^8.36.0",
+    "eslint": "^9.31.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-prettier": "^5.5.1",
+    "prettier": "^3.6.2",
+    "typescript": "^5.8.3",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.2.3"
+  },
+  "keywords": [
+    "slack",
+    "google chat",
+    "import"
+  ],
+  "author": "Markus Jura",
   "packageManager": "pnpm@10.5.2"
 }

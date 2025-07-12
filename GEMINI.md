@@ -72,5 +72,14 @@ Use the following technologies:
 - Avoid enums; use const objects with 'as const' assertion
 - Use functional components with TypeScript interfaces
 - Define strict types for message passing between different parts of the extension
+- Use absolute imports for all files "@/..."
 - Avoid try/catch blocks unless there is good reason to translate or handle error in that abstraction
 - Use explicit return types for all functions
+
+# Testing
+
+- Test outer scripts end-to-end, covering the happy path and important edge cases.
+- Write focused unit tests for complex or critical business logic and utility functions.
+- Structure tests clearly using `describe`, `it`, and `expect`.
+- Leverage `vi.mock` to isolate units of code by mocking dependencies.
+- Use `beforeEach` and `afterEach` for repeatable test setup and teardown.
