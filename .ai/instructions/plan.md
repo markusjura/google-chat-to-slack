@@ -194,16 +194,16 @@ The project will adhere to the following file structure, which is designed for c
 │   │   ├── services/
 │   │   │   ├── google-chat.test.ts
 │   │   │   └── slack.test.ts
-│   │   └── commands/
-│   │       └── login.test.ts
+│   │   └── commands/           # Tests for commands
+│   │       └── login.test.ts   # Tests for the `login` command
 │   ├── cli/
-│   │   ├── commands/           # Command implementations
-│   │   │   ├── login.ts
-│   │   │   ├── logout.ts
-│   │   │   ├── export.ts
-│   │   │   ├── import.ts
+│   │   ├── commands/           # Command implementations (e.g. login, export)
+│   │   │   ├── login.ts        # Implements `login <service>`
+│   │   │   ├── logout.ts       # Implements `logout <service>`
+│   │   │   ├── export.ts       # Implements `export <service>`
+│   │   │   ├── import.ts       # Implements `import <service>`
 │   │   │   └── migrate.ts
-│   │   └─��� parser.ts           # Argument parsing logic (e.g., using yargs)
+│   │   └── parser.ts           # Argument parsing logic (e.g., using yargs)
 │   ├── config/
 │   │   └── index.ts            # Manages retrieval of credentials
 │   ├── services/               # API clients and core logic
@@ -228,51 +228,45 @@ The project will adhere to the following file structure, which is designed for c
 
 This plan breaks the project into three main phases. For each step, implement the required functionality and then verify it with unit and manual tests to ensure correctness before proceeding.
 
+**Note on Verification:** After each step, run `pnpm lint` and fix linting errors to ensure code quality and consistency. All verification steps, including manual tests and linting, must pass before moving to the next step.
+
 ## Phase 1: Google Chat Export Functionality
 
 **Objective:** Build the commands and logic to export chat history from Google Chat into the specified intermediate JSON format.
 
-1.  **Setup `google-chat` Command Group**
-    - **Action:** Create the base command `chatmig google-chat` which will serve as a namespace for all Google Chat related subcommands.
-    - **Verification:** Run `ts-node bin/chatmig.ts google-chat --help` and confirm the command is registered.
+1.  **Implement `login` and `logout` for Google Chat**
+    - **Action:** Implement the `login <service>` and `logout <service>` commands. For this phase, add support for the `google-chat` service. `login` will handle the OAuth 2.0 flow and store credentials securely. `logout` will clear them.
+    - **Verification:** Write unit tests to mock the OAuth flow and token storage. Manually run `chatmig login google-chat` and `chatmig logout google-chat` to confirm the authentication process works and credentials are deleted.
 
-2.  **Implement `google-chat login` and `logout`**
-    - **Action:** Implement the `login` command to handle the Google Chat OAuth 2.0 flow. Securely store the refresh token using the system keychain. Implement the `logout` command to revoke the token and clear credentials.
-    - **Verification:** Write unit tests to mock the OAuth flow and token storage. Manually run `login` and `logout` to confirm the authentication process works and credentials are deleted.
+2.  **Implement `export google-chat` Command**
+    - **Action:** Create the `export <service>` command and implement the logic for `google-chat`. It should accept `--space` and `--output` arguments.
+    - **Verification:** Run `chatmig export google-chat --help` to ensure arguments are correctly defined.
 
-3.  **Implement `google-chat export` Command**
-    - **Action:** Create the `export` command structure, accepting `--space` and `--output` arguments.
-    - **Verification:** Run the `export` command with `--help` to ensure arguments are correctly defined.
-
-4.  **Implement Data Fetching Logic**
+3.  **Implement Data Fetching Logic**
     - **Action:** Implement the service logic to list a user's spaces and fetch all messages for a given space, including handling API pagination.
     - **Verification:** Write unit tests mocking the Google Chat API to verify that spaces are listed and that messages are fetched completely.
 
-5.  **Implement Data Transformation**
+4.  **Implement Data Transformation**
     - **Action:** Create the data transformation logic that converts Google Chat API responses (for spaces, messages, users) into the defined intermediate JSON format.
     - **Verification:** Write focused unit tests to validate the transformation for different message types (e.g., text, attachments, threads).
 
-6.  **Finalize Export and Test End-to-End**
-    - **Action:** Connect the data fetching and transformation steps to the `export` command, writing the final JSON to the specified output file.
-    - **Verification:** Perform a manual end-to-end test by running `chatmig google-chat export --space <test-space-id> --output /tmp/export.json`. Inspect the JSON file to confirm its structure and content are correct.
+5.  **Finalize Export and Test End-to-End**
+    - **Action:** Connect the data fetching and transformation steps to the `export google-chat` command, writing the final JSON to the specified output file.
+    - **Verification:** Perform a manual end-to-end test by running `chatmig export google-chat --space <test-space-id> --output /tmp/export.json`. Inspect the JSON file to confirm its structure and content are correct.
 
 ## Phase 2: Slack Import Functionality
 
 **Objective:** Build the commands and logic to import data from the intermediate JSON format into a Slack workspace.
 
-1.  **Setup `slack` Command Group**
-    - **Action:** Create the base command `chatmig slack` for all Slack-related subcommands.
-    - **Verification:** Run `ts-node bin/chatmig.ts slack --help` and confirm the command is registered.
+1.  **Enhance `login` and `logout` for Slack**
+    - **Action:** Extend the `login <service>` and `logout <service>` commands to handle the `slack` service, managing its API credentials.
+    - **Verification:** Update unit tests for `login`/`logout` to cover Slack. Manually run `chatmig login slack` and `chatmig logout slack`.
 
-2.  **Enhance `login` and `logout` for Slack**
-    - **Action:** Extend the existing `login` and `logout` commands to also manage Slack API credentials (bot token).
-    - **Verification:** Update unit tests for `login`/`logout` to cover Slack credential management.
+2.  **Implement `import slack` Command**
+    - **Action:** Create the `import <service>` command and implement the logic for `slack`. It should accept `--input` and `--channel` arguments.
+    - **Verification:** Run `chatmig import slack --help` to ensure arguments are correctly defined.
 
-3.  **Implement `slack import` Command**
-    - **Action:** Create the `import` command, accepting `--input` and `--channel` arguments.
-    - **Verification:** Run `import --help` to ensure arguments are correctly defined.
-
-4.  **Implement Import Logic**
+3.  **Implement Import Logic**
     - **Action:** Implement the service logic to:
       1.  Read and parse the intermediate JSON data file.
       2.  Map Google Chat users to Slack users (e.g., by email).
@@ -280,9 +274,9 @@ This plan breaks the project into three main phases. For each step, implement th
       4.  Post messages to the channel, respecting Slack's rate limits.
     - **Verification:** Write unit tests for the user mapping and data parsing logic. Use mocked Slack API clients to test channel lookup and message posting.
 
-5.  **Test End-to-End Import**
-    - **Action:** Connect the import logic to the `import` command.
-    - **Verification:** Perform a manual end-to-end test by running `chatmig slack import --input /tmp/export.json --channel <test-channel-name>`. Check the target Slack channel to confirm messages and attachments were imported correctly.
+4.  **Test End-to-End Import**
+    - **Action:** Connect the import logic to the `import slack` command.
+    - **Verification:** Perform a manual end-to-end test by running `chatmig import slack --input /tmp/export.json --channel <test-channel-name>`. Check the target Slack channel to confirm messages and attachments were imported correctly.
 
 ## Phase 3: Combined Migration Command
 
