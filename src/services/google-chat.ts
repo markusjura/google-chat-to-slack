@@ -1,8 +1,11 @@
 import { OAuth2Client } from 'google-auth-library';
-import { setToken } from '../utils/token-manager';
+import { getToken, setToken } from '../utils/token-manager';
 import * as http from 'http';
 import * as url from 'url';
 import { config } from '../config';
+import { google, chat_v1 } from 'googleapis';
+import { GaxiosResponse } from 'gaxios';
+import { Space, Message } from '../types/google-chat';
 
 const REDIRECT_URI = 'http://localhost:3000';
 
@@ -31,39 +34,30 @@ export async function loginToGoogleChat(): Promise<void> {
   console.log('Authorize this app by visiting this url:', authUrl);
 
   const code = await new Promise<string>((resolve, reject) => {
-    const server = http.createServer(async (req, res) => {
-      try {
-        if (req.url) {
-          const parsedUrl = url.parse(req.url, true);
-          const authCode = parsedUrl.query.code as string;
-          if (authCode) {
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end('Authentication successful! You can close this tab.');
-            server.close();
-            resolve(authCode);
-          } else {
-            res.writeHead(400).end('No code found in redirect.');
-            server.close();
-            reject(new Error('No code found in redirect.'));
-          }
-        }
-      } catch (e) {
-        res.writeHead(500).end('Internal server error.');
+    const server = http.createServer((req, res) => {
+      const parsedUrl = url.parse(req.url ?? '', true);
+      const authCode = parsedUrl.query.code as string;
+
+      if (authCode) {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('Authentication successful! You can close this tab.');
         server.close();
-        reject(e);
+        resolve(authCode);
+      } else {
+        const error = new Error('No code found in redirect.');
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end(error.message);
+        server.close();
+        reject(error);
       }
     });
 
     server.listen(3000, () => {
       console.log('Listening for redirect on http://localhost:3000');
-      import('open').then(({ default: open }) => {
-        open(authUrl);
-      });
+      void import('open').then(({ default: open }) => open(authUrl));
     });
 
-    server.on('error', (err) => {
-      reject(err);
-    });
+    server.on('error', reject);
   });
 
   const { tokens } = await oAuth2Client.getToken(code);
@@ -73,4 +67,66 @@ export async function loginToGoogleChat(): Promise<void> {
   } else {
     console.error('Failed to get refresh token.');
   }
+}
+
+async function getGoogleChatClient(): Promise<chat_v1.Chat> {
+  const oAuth2Client = getOauth2Client();
+  const refreshToken = await getToken('google-chat');
+  if (!refreshToken) {
+    throw new Error(
+      'User not authenticated. Please run "login google-chat" first.'
+    );
+  }
+  oAuth2Client.setCredentials({ refresh_token: refreshToken });
+
+  const { token: accessToken } = await oAuth2Client.getAccessToken();
+  oAuth2Client.setCredentials({ access_token: accessToken });
+
+  return google.chat({
+    version: 'v1',
+    auth: oAuth2Client,
+  });
+}
+
+export async function listSpaces(): Promise<Space[]> {
+  const chat = await getGoogleChatClient();
+  const spaces: Space[] = [];
+  let pageToken: string | undefined | null = undefined;
+
+  do {
+    const res: GaxiosResponse<chat_v1.Schema$ListSpacesResponse> =
+      await chat.spaces.list({
+        pageSize: 100,
+        pageToken: pageToken ?? undefined,
+      });
+
+    if (res.data.spaces) {
+      spaces.push(...(res.data.spaces as Space[]));
+    }
+    pageToken = res.data.nextPageToken;
+  } while (pageToken);
+
+  return spaces;
+}
+
+export async function listMessages(spaceName: string): Promise<Message[]> {
+  const chat = await getGoogleChatClient();
+  const messages: Message[] = [];
+  let pageToken: string | undefined | null = undefined;
+
+  do {
+    const res: GaxiosResponse<chat_v1.Schema$ListMessagesResponse> =
+      await chat.spaces.messages.list({
+        parent: spaceName,
+        pageSize: 1000,
+        pageToken: pageToken ?? undefined,
+      });
+
+    if (res.data.messages) {
+      messages.push(...(res.data.messages as Message[]));
+    }
+    pageToken = res.data.nextPageToken;
+  } while (pageToken);
+
+  return messages;
 }

@@ -236,11 +236,11 @@ This plan breaks the project into three main phases. For each step, implement th
 
 1.  **Implement `login` and `logout` for Google Chat**
     - **Action:** Implement the `login <service>` and `logout <service>` commands. For this phase, add support for the `google-chat` service. `login` will handle the OAuth 2.0 flow and store credentials securely. `logout` will clear them.
-    - **Verification:** Write unit tests to mock the OAuth flow and token storage. Manually run `chatmig login google-chat` and `chatmig logout google-chat` to confirm the authentication process works and credentials are deleted.
+    - **Verification:** Write unit tests to mock the OAuth flow and token storage. Manually run `pnpm start login google-chat` and `pnpm start logout google-chat` to confirm the authentication process works and credentials are deleted.
 
 2.  **Implement `export google-chat` Command**
     - **Action:** Create the `export <service>` command and implement the logic for `google-chat`. It should accept `--space` and `--output` arguments.
-    - **Verification:** Run `chatmig export google-chat --help` to ensure arguments are correctly defined.
+    - **Verification:** Run `pnpm start export google-chat --help` to ensure arguments are correctly defined.
 
 3.  **Implement Data Fetching Logic**
     - **Action:** Implement the service logic to list a user's spaces and fetch all messages for a given space, including handling API pagination.
@@ -252,7 +252,7 @@ This plan breaks the project into three main phases. For each step, implement th
 
 5.  **Finalize Export and Test End-to-End**
     - **Action:** Connect the data fetching and transformation steps to the `export google-chat` command, writing the final JSON to the specified output file.
-    - **Verification:** Perform a manual end-to-end test by running `chatmig export google-chat --space <test-space-id> --output /tmp/export.json`. Inspect the JSON file to confirm its structure and content are correct.
+    - **Verification:** Perform a manual end-to-end test by running `pnpm start export google-chat --space <test-space-id> --output /tmp/export.json`. Inspect the JSON file to confirm its structure and content are correct.
 
 ## Phase 2: Slack Import Functionality
 
@@ -260,11 +260,11 @@ This plan breaks the project into three main phases. For each step, implement th
 
 1.  **Enhance `login` and `logout` for Slack**
     - **Action:** Extend the `login <service>` and `logout <service>` commands to handle the `slack` service, managing its API credentials.
-    - **Verification:** Update unit tests for `login`/`logout` to cover Slack. Manually run `chatmig login slack` and `chatmig logout slack`.
+    - **Verification:** Update unit tests for `login`/`logout` to cover Slack. Manually run `pnpm start login slack` and `pnpm start logout slack`.
 
 2.  **Implement `import slack` Command**
     - **Action:** Create the `import <service>` command and implement the logic for `slack`. It should accept `--input` and `--channel` arguments.
-    - **Verification:** Run `chatmig import slack --help` to ensure arguments are correctly defined.
+    - **Verification:** Run `pnpm start import slack --help` to ensure arguments are correctly defined.
 
 3.  **Implement Import Logic**
     - **Action:** Implement the service logic to:
@@ -276,7 +276,7 @@ This plan breaks the project into three main phases. For each step, implement th
 
 4.  **Test End-to-End Import**
     - **Action:** Connect the import logic to the `import slack` command.
-    - **Verification:** Perform a manual end-to-end test by running `chatmig import slack --input /tmp/export.json --channel <test-channel-name>`. Check the target Slack channel to confirm messages and attachments were imported correctly.
+    - **Verification:** Perform a manual end-to-end test by running `pnpm start import slack --input /tmp/export.json --channel <test-channel-name>`. Check the target Slack channel to confirm messages and attachments were imported correctly.
 
 ## Phase 3: Combined Migration Command
 
@@ -296,4 +296,4 @@ This plan breaks the project into three main phases. For each step, implement th
 
 4.  **Final End-to-End Test**
     - **Action:** Perform a full, end-to-end test of the `migrate` command.
-    - **Verification:** Run `chatmig migrate --google-space <test-space-id> --slack-channel <test-channel-name>` and verify that the entire chat history is successfully migrated from the source space to the target channel.
+    - **Verification:** Run `pnpm start migrate --google-space <test-space-id> --slack-channel <test-channel-name>` and verify that the entire chat history is successfully migrated from the source space to the target channel.

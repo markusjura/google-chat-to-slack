@@ -14,9 +14,9 @@ export const logoutCommand: CommandModule<object, LogoutArgs> = {
       type: 'string',
       demandOption: true,
     }),
-  handler: async (argv) => {
+  handler: (argv) => {
     if (argv.service === 'google-chat') {
-      await deleteToken('google-chat');
+      deleteToken('google-chat');
       console.log('Successfully logged out from Google Chat.');
     } else {
       console.error(`Unsupported service: ${argv.service}`);
