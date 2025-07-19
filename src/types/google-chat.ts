@@ -7,28 +7,62 @@ export interface Space {
   spaceType: 'SPACE' | 'DM';
 }
 
-export interface Message {
+export interface GoogleMessage {
   name: string;
-  creator: User;
+  sender: User;
   createTime: string;
+  lastUpdateTime?: string;
   text: string;
+  formattedText?: string;
   thread?: {
     name: string;
   };
-  attachments?: Attachment[];
+  space: {
+    name: string;
+  };
+  attachments?: GoogleAttachment[];
+  attachedGifs?: AttachedGif[];
+  emojiReactionSummaries?: EmojiReactionSummary[];
+  annotations?: Annotation[];
 }
 
 export interface User {
   name: string;
-  displayName: string;
   type: 'HUMAN' | 'BOT';
-  email?: string; // Not always present
+  displayName?: string;
+  email?: string;
 }
 
-export interface Attachment {
+export interface GoogleAttachment {
   name: string;
+  contentName: string;
   contentType: string;
   downloadUri: string;
+  thumbnailUri: string;
+  source: 'DRIVE_FILE' | 'UPLOADED_CONTENT';
+}
+
+export interface AttachedGif {
+  uri: string;
+}
+
+export interface EmojiReactionSummary {
+  emoji: Emoji;
+  reactionCount: number;
+}
+
+export interface Emoji {
+  unicode: string;
+}
+
+export interface Annotation {
+  type: 'USER_MENTION';
+  startIndex: number;
+  length: number;
+  userMention: {
+    user: User;
+    type: 'ADD' | 'MENTION';
+  };
 }
 
 export interface ListSpacesResponse {
@@ -37,6 +71,6 @@ export interface ListSpacesResponse {
 }
 
 export interface ListMessagesResponse {
-  messages: Message[];
+  messages: GoogleMessage[];
   nextPageToken?: string;
 }

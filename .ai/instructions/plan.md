@@ -70,97 +70,62 @@ The migration tool will be structured with the following commands:
   - Removes the user's stored credentials for both services from the system keychain.
 
 - **`export`**:
-  - Connects to Google Chat using stored credentials.
-  - Fetches all data and saves it to a local intermediate format.
-  - **`--dry-run` flag:** Tests the connection to the Google Chat API, fetches a single space with a few messages, and verifies the.
+  - Connects to a source service (e.g., Google Chat) using stored credentials.
+  - Fetches all data (spaces, messages, users, etc.).
+  - Saves the data to a local file, preserving the source format (e.g., Google Chat API structure).
+  - **`--dry-run` flag:** Tests the connection to the source API, fetches a single space with a few messages, and verifies the process.
+
+- **`transform`**:
+    - Reads the exported source data file.
+    - Transforms it into the target format required by the destination service (e.g., Slack).
+    - Saves the transformed data to a new intermediate file.
+    - **`--dry-run` flag:** Performs the transformation and prints statistics about the transformed data without writing to a file.
+
 - **`import`**:
-  - Reads the intermediate data files.
-  - Connects to Slack using stored credentials.
-  - Imports the data into the target Slack workspace.
-  - **`--dry-run` flag:** Tests the connection to the Slack API, creates a test channel, posts a single message with an attachment, and then cleans up the created channel and message.
+  - Reads the **transformed** intermediate data files.
+  - Connects to the destination service (e.g., Slack) using stored credentials.
+  - Imports the data into the target workspace.
+  - **`--dry-run` flag:** Tests the connection to the destination API, creates a test channel, posts a single message with an attachment, and then cleans up the created channel and message.
 
 - **`migrate`**:
-  - An aggregate command that executes the `export` and `import` commands in sequence for a seamless end-to-end migration.
-  - Will accept all arguments from both `export` and `import` commands.
+  - An aggregate command that executes the `export`, `transform`, and `import` commands in sequence for a seamless end-to-end migration.
+  - Will accept all arguments from all three commands.
 
-## 6. Intermediate Export Format
+## 6. Data Formats
 
-To facilitate a clean import process and allow for inspection, the exported data will be stored in a structured JSON format. The export process will generate a primary JSON file (`migration-data.json`) and a directory for downloaded attachments.
+The migration process uses two main data files: `export.json` for the raw exported data and `import.json` for the data transformed for import.
 
-### 6.1. File Structure
+### 6.1. Export Format (`export.json`)
+
+The `export` command generates an `export.json` file containing the raw data from Google Chat, preserving the original API structure. This allows for inspection and debugging before transformation.
+
+#### 6.1.1. File Structure
 
 ```
-/export_data/
+/
 ├── /attachments/
 │   ├── attachment_1.png
 │   └── attachment_2.pdf
-└── migration-data.json
+└── export.json
 ```
 
-### 6.2. `migration-data.json` Specification
+#### 6.1.2. `export.json` Specification
 
-The main JSON file will have a root object containing arrays of users and spaces.
+The main JSON file has a root object containing arrays of users and spaces.
 
 - **`users`**: An array of all unique users encountered during the export. This is crucial for mapping message authors to Slack users.
 - **`spaces`**: An array of all Google Chat spaces (channels) to be migrated. Each space object contains its messages.
 
-### 6.3. Object Schemas and Example
+### 6.2. Slack Import Format (`import.json`)
 
-Below is an example demonstrating the structure of the `migration-data.json` file.
+The `transform` command takes the `export.json` file and converts it into an `import.json` file, which is structured for the Slack API.
 
-```json
-{
-  "export_timestamp": "2025-07-12T10:00:00Z",
-  "users": [
-    {
-      "name": "users/123456789012345678901",
-      "displayName": "Alice",
-      "email": "alice@example.com",
-      "type": "HUMAN"
-    },
-    {
-      "name": "users/987654321098765432109",
-      "displayName": "Bob",
-      "email": "bob@example.com",
-      "type": "HUMAN"
-    }
-  ],
-  "spaces": [
-    {
-      "name": "spaces/AAAAAAAAAAA",
-      "displayName": "Project Phoenix",
-      "spaceType": "SPACE",
-      "messages": [
-        {
-          "name": "spaces/AAAAAAAAAAA/messages/BBBBBBBBBBB.BBBBBBBBBBB",
-          "creator": "users/123456789012345678901",
-          "createTime": "2025-07-10T14:30:00Z",
-          "text": "Hey everyone, let's kick off the project.",
-          "thread": null,
-          "attachments": []
-        },
-        {
-          "name": "spaces/AAAAAAAAAAA/messages/CCCCCCCCCCC.CCCCCCCCCCC",
-          "creator": "users/987654321098765432109",
-          "createTime": "2025-07-10T14:35:00Z",
-          "text": "Great! Here is the initial design document.",
-          "thread": {
-            "name": "spaces/AAAAAAAAAAA/messages/BBBBBBBBBBB.BBBBBBBBBBB"
-          },
-          "attachments": [
-            {
-              "name": "spaces/AAAAAAAAAAA/messages/CCCCCCCCCCC.CCCCCCCCCCC/attachments/DDDDDDDDDDD",
-              "contentType": "application/pdf",
-              "downloadUrl": "https://chat.googleapis.com/v1/media/...",
-              "localPath": "attachments/design_doc.pdf"
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
-```
+#### 6.2.1. `import.json` Specification
+
+The `import.json` file contains a list of channels to be created, each with its messages formatted for Slack.
+
+- **`channels`**: An array of channel objects. Each object defines the channel's name and contains the messages to be imported.
+- **`messages`**: Each message object includes the author's email (for user mapping), the message text, and information about threads and attachments.
 
 ## 7. Testing
 
@@ -226,13 +191,13 @@ The project will adhere to the following file structure, which is designed for c
 
 # Implementation Plan
 
-This plan breaks the project into three main phases. For each step, implement the required functionality and then verify it with unit and manual tests to ensure correctness before proceeding.
+This plan breaks the project into four main phases. For each step, implement the required functionality and then verify it with unit and manual tests to ensure correctness before proceeding.
 
 **Note on Verification:** After each step, run `pnpm lint` and fix linting errors to ensure code quality and consistency. All verification steps, including manual tests and linting, must pass before moving to the next step.
 
 ## Phase 1: Google Chat Export Functionality
 
-**Objective:** Build the commands and logic to export chat history from Google Chat into the specified intermediate JSON format.
+**Objective:** Build the commands and logic to export chat history from Google Chat, preserving the source data format.
 
 1.  **Implement `login` and `logout` for Google Chat**
     - **Action:** Implement the `login <service>` and `logout <service>` commands. For this phase, add support for the `google-chat` service. `login` will handle the OAuth 2.0 flow and store credentials securely. `logout` will clear them.
@@ -246,49 +211,61 @@ This plan breaks the project into three main phases. For each step, implement th
     - **Action:** Implement the service logic to list a user's spaces and fetch all messages for a given space, including handling API pagination.
     - **Verification:** Write unit tests mocking the Google Chat API to verify that spaces are listed and that messages are fetched completely.
 
-4.  **Implement Data Transformation**
-    - **Action:** Create the data transformation logic that converts Google Chat API responses (for spaces, messages, users) into the defined intermediate JSON format.
-    - **Verification:** Write focused unit tests to validate the transformation for different message types (e.g., text, attachments, threads).
+4.  **Finalize Export and Test End-to-End**
+    - **Action:** Connect the data fetching logic to the `export google-chat` command, writing the raw API response data to the specified output file.
+    - **Verification:** Perform a manual end-to-end test by running `pnpm start export google-chat --space <test-space-id> --output /tmp/google-chat-export.json`. Inspect the JSON file to confirm its structure and content match the Google Chat API format.
 
-5.  **Finalize Export and Test End-to-End**
-    - **Action:** Connect the data fetching and transformation steps to the `export google-chat` command, writing the final JSON to the specified output file.
-    - **Verification:** Perform a manual end-to-end test by running `pnpm start export google-chat --space <test-space-id> --output /tmp/export.json`. Inspect the JSON file to confirm its structure and content are correct.
+## Phase 2: Data Transformation
 
-## Phase 2: Slack Import Functionality
+**Objective:** Build the command to transform the exported Google Chat data into the format required for Slack.
 
-**Objective:** Build the commands and logic to import data from the intermediate JSON format into a Slack workspace.
+1.  **Implement `transform` Command**
+    - **Action:** Create the `transform` command. It should accept `--input` and `--output` arguments.
+    - **Verification:** Run `pnpm start transform --help` to ensure arguments are correctly defined.
+
+2.  **Implement Data Transformation Logic**
+    - **Action:** Create the data transformation logic that converts the Google Chat export data (`export.json`) into the Slack import format (`import.json`). This involves mapping Google Chat spaces to Slack channels and Google Chat messages to Slack messages.
+    - **Verification:** Write focused unit tests to validate the transformation for different data structures (e.g., text, attachments, threads).
+
+3.  **Finalize Transform and Test End-to-End**
+    - **Action:** Connect the transformation logic to the `transform` command, reading the `export.json` file and writing the final `import.json` file.
+    - **Verification:** Perform a manual end-to-end test by running `pnpm start transform --input /tmp/export.json --output /tmp/import.json`. Inspect the output JSON file to confirm its structure and content are correct for a Slack import.
+
+## Phase 3: Slack Import Functionality
+
+**Objective:** Build the commands and logic to import data from the **transformed** `import.json` file into a Slack workspace.
 
 1.  **Enhance `login` and `logout` for Slack**
     - **Action:** Extend the `login <service>` and `logout <service>` commands to handle the `slack` service, managing its API credentials.
     - **Verification:** Update unit tests for `login`/`logout` to cover Slack. Manually run `pnpm start login slack` and `pnpm start logout slack`.
 
-2.  **Implement `import slack` Command**
-    - **Action:** Create the `import <service>` command and implement the logic for `slack`. It should accept `--input` and `--channel` arguments.
-    - **Verification:** Run `pnpm start import slack --help` to ensure arguments are correctly defined.
+2.  **Implement `import` Command**
+    - **Action:** Create the `import` command. It will only support importing to Slack for now. It should accept `--input` and `--channel` arguments.
+    - **Verification:** Run `pnpm start import --help` to ensure arguments are correctly defined.
 
 3.  **Implement Import Logic**
     - **Action:** Implement the service logic to:
-      1.  Read and parse the intermediate JSON data file.
-      2.  Map Google Chat users to Slack users (e.g., by email).
+      1.  Read and parse the `import.json` data file.
+      2.  Map users to Slack users (e.g., by email).
       3.  Find or create the target Slack channel.
       4.  Post messages to the channel, respecting Slack's rate limits.
     - **Verification:** Write unit tests for the user mapping and data parsing logic. Use mocked Slack API clients to test channel lookup and message posting.
 
 4.  **Test End-to-End Import**
-    - **Action:** Connect the import logic to the `import slack` command.
-    - **Verification:** Perform a manual end-to-end test by running `pnpm start import slack --input /tmp/export.json --channel <test-channel-name>`. Check the target Slack channel to confirm messages and attachments were imported correctly.
+    - **Action:** Connect the import logic to the `import` command.
+    - **Verification:** Perform a manual end-to-end test by running `pnpm start import --input /tmp/import.json --channel <test-channel-name>`. Check the target Slack channel to confirm messages and attachments were imported correctly.
 
-## Phase 3: Combined Migration Command
+## Phase 4: Combined Migration Command
 
-**Objective:** Create a single, seamless command to orchestrate the entire migration from Google Chat to Slack.
+**Objective:** Create a single, seamless command to orchestrate the entire migration from a source to a destination.
 
 1.  **Implement `migrate` Command**
-    - **Action:** Create the top-level `migrate` command that accepts arguments for both the source Google Chat space and the target Slack channel.
+    - **Action:** Create the top-level `migrate` command that accepts arguments for the source, destination, and any other required parameters.
     - **Verification:** Run `migrate --help` to ensure all arguments are correctly defined.
 
 2.  **Implement Migration Orchestration**
-    - **Action:** Implement the orchestration logic that reuses the services from Phase 1 and 2. The data should be passed in-memory from the export function to the import function without writing to a temporary file.
-    - **Verification:** Write unit tests for the orchestration logic, mocking the underlying Google Chat and Slack services.
+    - **Action:** Implement the orchestration logic that reuses the services from the previous phases. The data should be passed in-memory between steps (`export` -> `transform` -> `import`) without writing to temporary files.
+    - **Verification:** Write unit tests for the orchestration logic, mocking the underlying services.
 
 3.  **Add User Feedback**
     - **Action:** Enhance the command to provide real-time feedback, such as a progress bar and a final summary report.
@@ -296,4 +273,4 @@ This plan breaks the project into three main phases. For each step, implement th
 
 4.  **Final End-to-End Test**
     - **Action:** Perform a full, end-to-end test of the `migrate` command.
-    - **Verification:** Run `pnpm start migrate --google-space <test-space-id> --slack-channel <test-channel-name>` and verify that the entire chat history is successfully migrated from the source space to the target channel.
+    - **Verification:** Run `pnpm start migrate --from google-chat --to slack --google-space <test-space-id> --slack-channel <test-channel-name>` and verify that the entire chat history is successfully migrated.

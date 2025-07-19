@@ -1,10 +1,11 @@
+import { writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import url from 'node:url';
 import type { GaxiosResponse } from 'gaxios';
 import { OAuth2Client } from 'google-auth-library';
 import { type chat_v1, google } from 'googleapis';
 import { config } from '../config';
-import type { Message, Space } from '../types/google-chat';
+import type { GoogleMessage, Space } from '../types/google-chat';
 import { getToken, setToken } from '../utils/token-manager';
 
 const REDIRECT_URI = 'http://localhost:3000';
@@ -109,24 +110,115 @@ export async function listSpaces(): Promise<Space[]> {
   return spaces;
 }
 
-export async function listMessages(spaceName: string): Promise<Message[]> {
+async function exportGoogleChatDataDryRun(
+  spaceId: string | undefined,
+  outputPath: string
+): Promise<void> {
+  const allSpaces = await listSpaces();
+  let targetSpaces: Space[];
+
+  if (spaceId) {
+    targetSpaces = allSpaces.filter((s) => s.name === `spaces/${spaceId}`);
+  } else {
+    targetSpaces = allSpaces.length > 0 ? [allSpaces[0]] : [];
+  }
+
+  if (targetSpaces.length === 0) {
+    console.log(
+      `No spaces found. If you provided a space ID, ensure it's correct.`
+    );
+    return;
+  }
+
+  const space = targetSpaces[0];
+  console.log(`[Dry Run] Fetching 1 message from space: ${space.displayName}`);
+  const messages = await listMessages(space.name, 1);
+  console.log(`[Dry Run] Found ${messages.length} message(s).`);
+
+  const exportedSpace = {
+    ...space,
+    messages,
+  };
+
+  const exportData = {
+    export_timestamp: new Date().toISOString(),
+    spaces: [exportedSpace],
+  };
+
+  await writeFile(outputPath, JSON.stringify(exportData, null, 2));
+  console.log(`[Dry Run] Exported data to ${outputPath}`);
+}
+
+export async function listMessages(
+  spaceName: string,
+  limit?: number
+): Promise<GoogleMessage[]> {
   const chat = await getGoogleChatClient();
-  const messages: Message[] = [];
+  const messages: GoogleMessage[] = [];
   let pageToken: string | undefined;
 
   do {
     // biome-ignore lint/nursery/noAwaitInLoop: The Google Chat API uses pagination, and we need to await each page.
     const res = (await chat.spaces.messages.list({
       parent: spaceName,
-      pageSize: 1000,
+      pageSize: limit ?? 1000,
       pageToken,
     })) as unknown as GaxiosResponse<chat_v1.Schema$ListMessagesResponse>;
 
     if (res.data.messages) {
-      messages.push(...(res.data.messages as Message[]));
+      messages.push(...(res.data.messages as GoogleMessage[]));
     }
     pageToken = res.data.nextPageToken ?? undefined;
+    if (limit && messages.length >= limit) {
+      break;
+    }
   } while (pageToken);
 
   return messages;
+}
+
+export async function exportGoogleChatData(
+  spaceId: string | undefined,
+  outputPath: string,
+  dryRun?: boolean
+): Promise<void> {
+  if (dryRun) {
+    await exportGoogleChatDataDryRun(spaceId, outputPath);
+    return;
+  }
+
+  const spaces = await listSpaces();
+  const targetSpaces = spaceId
+    ? spaces.filter((s) => s.name === `spaces/${spaceId}`)
+    : spaces;
+
+  if (targetSpaces.length === 0) {
+    console.log(
+      `No spaces found. If you provided a space ID, ensure it's correct.`
+    );
+    return;
+  }
+
+  const exportedSpaces: (Space & { messages: GoogleMessage[] })[] =
+    await Promise.all(
+      targetSpaces.map(async (space) => {
+        console.log(`Fetching messages from space: ${space.displayName}`);
+        const messages = await listMessages(space.name);
+        console.log(
+          `Found ${messages.length} messages in ${space.displayName}.`
+        );
+        return {
+          ...space,
+          messages,
+        };
+      })
+    );
+
+  const exportData = {
+    export_timestamp: new Date().toISOString(),
+    spaces: exportedSpaces,
+  };
+
+  await writeFile(outputPath, JSON.stringify(exportData, null, 2));
+  console.log(`Exported data to ${outputPath}`);
 }

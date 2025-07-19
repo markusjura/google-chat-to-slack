@@ -1,8 +1,10 @@
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { exportCommand } from './commands/export';
+import { importCommand } from './commands/import';
 import { loginCommand } from './commands/login';
 import { logoutCommand } from './commands/logout';
+import { transformCommand } from './commands/transform';
 
 export function getParser() {
   const parser = yargs(hideBin(process.argv));
@@ -10,6 +12,8 @@ export function getParser() {
   parser.command(loginCommand);
   parser.command(logoutCommand);
   parser.command(exportCommand);
+  parser.command(transformCommand);
+  parser.command(importCommand);
 
   return parser;
 }

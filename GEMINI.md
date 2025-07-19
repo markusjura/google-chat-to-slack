@@ -60,7 +60,7 @@ Use the following technologies:
 │
 ├── package.json
 ├── pnpm-lock.yaml
-├── tsconfig.json                   # TypeScript configuration
+��── tsconfig.json                   # TypeScript configuration
 ├── vitest.config.ts                # Vitest configuration
 └── README.md
 ```
@@ -354,3 +354,18 @@ try {
   return await fetchData();
 } catch (e) {
   console.log(e);
+}
+
+# Script Commands
+
+To test our script use `pnpm start`, followed by the command and service you want to test, e.g.
+
+```bash
+pnpm start export google-chat
+```
+
+To execute dry run use `--dry-run`, e.g.
+
+```bash
+pnpm start export google-chat --dry-run
+```
