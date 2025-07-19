@@ -1,0 +1,23 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.1.1/schema.json",
+  "extends": ["ultracite"],
+  "files": {
+    "ignoreUnknown": true,
+    "includes": ["src/**/*.{ts,tsx,js,jsx,json,jsonc,css,html}"]
+  },
+  "linter": {
+    "rules": {
+      "complexity": {
+        "noBannedTypes": "off"
+      },
+      "suspicious": {
+        "noConsole": "off", // console logs for scripts
+        "noExplicitAny": "off" // We trust devs to use any only when necessary
+      },
+      "style": {
+        "noUnusedTemplateLiteral": "off", // Stylistic opinion
+        "noUselessElse": "off" // Stylistic opinion
+      }
+    }
+  }
+}

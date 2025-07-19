@@ -1,11 +1,11 @@
+import http from 'node:http';
+import url from 'node:url';
+import type { GaxiosResponse } from 'gaxios';
 import { OAuth2Client } from 'google-auth-library';
-import { getToken, setToken } from '../utils/token-manager';
-import * as http from 'http';
-import * as url from 'url';
+import { type chat_v1, google } from 'googleapis';
 import { config } from '../config';
-import { google, chat_v1 } from 'googleapis';
-import { GaxiosResponse } from 'gaxios';
-import { Space, Message } from '../types/google-chat';
+import type { Message, Space } from '../types/google-chat';
+import { getToken, setToken } from '../utils/token-manager';
 
 const REDIRECT_URI = 'http://localhost:3000';
 
@@ -54,7 +54,7 @@ export async function loginToGoogleChat(): Promise<void> {
 
     server.listen(3000, () => {
       console.log('Listening for redirect on http://localhost:3000');
-      void import('open').then(({ default: open }) => open(authUrl));
+      import('open').then(({ default: open }) => open(authUrl));
     });
 
     server.on('error', reject);
@@ -91,19 +91,19 @@ async function getGoogleChatClient(): Promise<chat_v1.Chat> {
 export async function listSpaces(): Promise<Space[]> {
   const chat = await getGoogleChatClient();
   const spaces: Space[] = [];
-  let pageToken: string | undefined | null = undefined;
+  let pageToken: string | undefined;
 
   do {
-    const res: GaxiosResponse<chat_v1.Schema$ListSpacesResponse> =
-      await chat.spaces.list({
-        pageSize: 100,
-        pageToken: pageToken ?? undefined,
-      });
+    // biome-ignore lint/nursery/noAwaitInLoop: The Google Chat API uses pagination, and we need to await each page.
+    const res = (await chat.spaces.list({
+      pageSize: 100,
+      pageToken,
+    })) as unknown as GaxiosResponse<chat_v1.Schema$ListSpacesResponse>;
 
     if (res.data.spaces) {
       spaces.push(...(res.data.spaces as Space[]));
     }
-    pageToken = res.data.nextPageToken;
+    pageToken = res.data.nextPageToken ?? undefined;
   } while (pageToken);
 
   return spaces;
@@ -112,20 +112,20 @@ export async function listSpaces(): Promise<Space[]> {
 export async function listMessages(spaceName: string): Promise<Message[]> {
   const chat = await getGoogleChatClient();
   const messages: Message[] = [];
-  let pageToken: string | undefined | null = undefined;
+  let pageToken: string | undefined;
 
   do {
-    const res: GaxiosResponse<chat_v1.Schema$ListMessagesResponse> =
-      await chat.spaces.messages.list({
-        parent: spaceName,
-        pageSize: 1000,
-        pageToken: pageToken ?? undefined,
-      });
+    // biome-ignore lint/nursery/noAwaitInLoop: The Google Chat API uses pagination, and we need to await each page.
+    const res = (await chat.spaces.messages.list({
+      parent: spaceName,
+      pageSize: 1000,
+      pageToken,
+    })) as unknown as GaxiosResponse<chat_v1.Schema$ListMessagesResponse>;
 
     if (res.data.messages) {
       messages.push(...(res.data.messages as Message[]));
     }
-    pageToken = res.data.nextPageToken;
+    pageToken = res.data.nextPageToken ?? undefined;
   } while (pageToken);
 
   return messages;

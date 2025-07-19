@@ -1,9 +1,8 @@
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-
+import { exportCommand } from './commands/export';
 import { loginCommand } from './commands/login';
 import { logoutCommand } from './commands/logout';
-import { exportCommand } from './commands/export';
 
 export function getParser() {
   const parser = yargs(hideBin(process.argv));

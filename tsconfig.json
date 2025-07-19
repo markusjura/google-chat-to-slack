@@ -7,13 +7,12 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "outDir": "./dist",
-
-    /* Path Aliases */
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
-    }
+    },
+    "strictNullChecks": true
   },
-  "include": ["eslint.config.js", "**/*.ts", "**/*.js"],
+  "include": ["**/*.ts", "**/*.js"],
   "exclude": ["node_modules"]
 }

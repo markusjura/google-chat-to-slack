@@ -1,19 +1,19 @@
+import { writeFile } from 'node:fs/promises';
 import type { CommandModule } from 'yargs';
 import { listMessages, listSpaces } from '../../services/google-chat';
-import * as fs from 'fs/promises';
-import {
+import type {
+  Attachment as GoogleAttachment,
+  Message as GoogleMessage,
+  Space as GoogleSpace,
+  User as GoogleUser,
+} from '../../types/google-chat';
+import type {
+  Attachment,
+  Message,
   MigrationData,
   Space,
-  Message,
   User,
-  Attachment,
 } from '../../types/migration';
-import {
-  Space as GoogleSpace,
-  Message as GoogleMessage,
-  User as GoogleUser,
-  Attachment as GoogleAttachment,
-} from '../../types/google-chat';
 
 type ExportArgs = {
   service: string;
@@ -94,7 +94,8 @@ export const exportCommand: CommandModule<object, ExportArgs> = {
           'Test the connection and export a single space with a few messages.',
         type: 'boolean',
         default: false,
-      }),
+      })
+      .alias('dryRun', 'dry-run'),
   handler: async (argv) => {
     if (argv.service !== 'google-chat') {
       console.error(`Unsupported service: ${argv.service}`);
@@ -158,7 +159,7 @@ export const exportCommand: CommandModule<object, ExportArgs> = {
         spaces: transformedSpaces,
       };
 
-      await fs.writeFile(argv.output, JSON.stringify(migrationData, null, 2));
+      await writeFile(argv.output, JSON.stringify(migrationData, null, 2));
       console.log(`Successfully exported data to ${argv.output}`);
     } catch (error) {
       console.error('An error occurred during export:', error);

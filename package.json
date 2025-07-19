@@ -1,12 +1,16 @@
 {
-  "name": "chatmig",
+  "name": "chat-migrator",
   "version": "1.0.0",
   "description": "Node script to migrate channels, threads, and messages from Google Chat to Slack.",
   "main": "index.js",
-  "scripts": {
-    "test": "vitest",
-    "lint": "eslint . --ext .ts --fix",
-    "start": "ts-node bin/chatmig.ts"
+  "scripts": {    
+    "start": "ts-node bin/chatmig.ts",
+    "prepare": "husky",
+    "lint": "pnpm dlx ultracite lint",
+    "format": "pnpm dlx ultracite format",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm dlx ultracite format && tsc --noEmit",
+    "test": "vitest"
   },
   "dependencies": {
     "@napi-rs/keyring": "^1.1.8",
@@ -19,16 +23,13 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.1.1",
     "@types/node": "^24.0.13",
     "@types/yargs": "^17.0.33",
-    "@typescript-eslint/eslint-plugin": "^8.36.0",
-    "@typescript-eslint/parser": "^8.36.0",
-    "eslint": "^9.31.0",
-    "eslint-config-prettier": "^10.1.5",
-    "eslint-plugin-prettier": "^5.5.1",
-    "prettier": "^3.6.2",
+    "husky": "^9.1.7",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3",
+    "ultracite": "5.0.35",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.2.3"
   },
@@ -38,5 +39,5 @@
     "import"
   ],
   "author": "Markus Jura",
-  "packageManager": "pnpm@10.5.2"
+  "packageManager": "pnpm@10.13.1"
 }
