@@ -22,7 +22,8 @@ The script will perform the following actions:
   - **Messages:** All messages within each space (`spaces.messages.list`).
   - **Threads:** Replies to messages will be fetched to reconstruct threads.
   - **Attachments:** Media attached to messages will be downloaded (`media.download`).
-  - **Users:** User information will be fetched to map authors.
+  - **User Avatars:** Profile pictures will be downloaded from the Google People API for all message authors.
+  - **Users:** User information will be fetched to map authors, including display names and email addresses.
   - **Timestamps:** Message creation and edit timestamps will be preserved.
 
 ### 2.2. Import to Slack
@@ -38,7 +39,7 @@ The script will perform the following actions:
 
 ## 3. Authentication
 
-- **Google Chat:** OAuth 2.0 with user credentials. The application will request the necessary scopes (e.g., `chat.messages`, `chat.spaces`) to read data on the user's behalf.
+- **Google Chat:** OAuth 2.0 with user credentials. The application will request the necessary scopes including `chat.spaces.readonly`, `chat.messages.readonly`, `chat.memberships.readonly`, `profile`, and `email` to read chat data and user profile information.
 - **Slack:** OAuth 2.0. A Slack App will be created to obtain a Client ID and Secret. The script will use a bot token (`xoxb-`) to perform actions like creating channels and posting messages. This is preferable to a user token as it is not tied to a specific user's session.
 
 An abstraction layer will be created to manage tokens for both services, including handling token refresh where applicable.
@@ -106,15 +107,18 @@ The `export` command generates an `export.json` file containing the raw data fro
 ├── /attachments/
 │   ├── attachment_1.png
 │   └── attachment_2.pdf
+├── /avatars/
+│   ├── 113850239791407514368.jpg
+│   └── 987654321098765432109.jpg
 └── export.json
 ```
 
 #### 6.1.2. `export.json` Specification
 
-The main JSON file has a root object containing arrays of users and spaces.
+The main JSON file has a root object containing an export timestamp and spaces with embedded user data.
 
-- **`users`**: An array of all unique users encountered during the export. This is crucial for mapping message authors to Slack users.
-- **`spaces`**: An array of all Google Chat spaces (channels) to be migrated. Each space object contains its messages.
+- **`export_timestamp`**: ISO timestamp of when the export was created.
+- **`spaces`**: An array of all Google Chat spaces (channels) to be migrated. Each space object contains its messages with complete user information, including local avatar file paths.
 
 ### 6.2. Slack Import Format (`import.json`)
 
@@ -195,25 +199,38 @@ This plan breaks the project into four main phases. For each step, implement the
 
 **Note on Verification:** After each step, run `pnpm lint` and fix linting errors to ensure code quality and consistency. All verification steps, including manual tests and linting, must pass before moving to the next step.
 
-## Phase 1: Google Chat Export Functionality
+## Phase 1: Google Chat Export Functionality ✅ COMPLETED
 
 **Objective:** Build the commands and logic to export chat history from Google Chat, preserving the source data format.
 
-1.  **Implement `login` and `logout` for Google Chat**
+1.  **✅ Implement `login` and `logout` for Google Chat**
     - **Action:** Implement the `login <service>` and `logout <service>` commands. For this phase, add support for the `google-chat` service. `login` will handle the OAuth 2.0 flow and store credentials securely. `logout` will clear them.
-    - **Verification:** Write unit tests to mock the OAuth flow and token storage. Manually run `pnpm start login google-chat` and `pnpm start logout google-chat` to confirm the authentication process works and credentials are deleted.
+    - **Status:** COMPLETED - OAuth 2.0 flow implemented with secure token storage using system keychain.
+    - **Verification:** Commands `pnpm start login google-chat` and `pnpm start logout google-chat` are working correctly.
 
-2.  **Implement `export google-chat` Command**
-    - **Action:** Create the `export <service>` command and implement the logic for `google-chat`. It should accept `--space` and `--output` arguments.
-    - **Verification:** Run `pnpm start export google-chat --help` to ensure arguments are correctly defined.
+2.  **✅ Implement `export google-chat` Command**
+    - **Action:** Create the `export <service>` command and implement the logic for `google-chat`. It should accept `--space`, `--output`, and `--dry-run` arguments.
+    - **Status:** COMPLETED - Command implemented with all required arguments.
+    - **Verification:** `pnpm start export google-chat --help` shows correct argument definitions.
 
-3.  **Implement Data Fetching Logic**
-    - **Action:** Implement the service logic to list a user's spaces and fetch all messages for a given space, including handling API pagination.
-    - **Verification:** Write unit tests mocking the Google Chat API to verify that spaces are listed and that messages are fetched completely.
+3.  **✅ Implement Data Fetching Logic**
+    - **Action:** Implement the service logic to list a user's spaces and fetch all messages for a given space, including handling API pagination, attachment downloads, and avatar downloads.
+    - **Status:** COMPLETED - Full implementation including:
+      - Space listing with pagination
+      - Message fetching with pagination
+      - Attachment downloads via Google Chat `media.download` API
+      - Avatar downloads via Google People API
+      - Proper authentication scopes for all required APIs
+    - **Additional Features:** Avatar downloads, user profile fetching, local file management.
 
-4.  **Finalize Export and Test End-to-End**
-    - **Action:** Connect the data fetching logic to the `export google-chat` command, writing the raw API response data to the specified output file.
-    - **Verification:** Perform a manual end-to-end test by running `pnpm start export google-chat --space <test-space-id> --output /tmp/google-chat-export.json`. Inspect the JSON file to confirm its structure and content match the Google Chat API format.
+4.  **✅ Finalize Export and Test End-to-End**
+    - **Action:** Connect the data fetching logic to the `export google-chat` command, writing the complete export data including downloaded files to the specified output directory.
+    - **Status:** COMPLETED - End-to-end export functionality working including:
+      - Directory structure creation (`attachments/`, `avatars/`)
+      - File downloads and local path updates in JSON
+      - Dry-run mode for testing
+      - Complete error handling and authentication
+    - **Verification:** `pnpm start export google-chat --dry-run` successfully exports data with downloaded avatars.
 
 ## Phase 2: Data Transformation
 

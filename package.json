@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Node script to migrate channels, threads, and messages from Google Chat to Slack.",
   "main": "index.js",
-  "scripts": {    
+  "scripts": {
     "start": "ts-node bin/chatmig.ts",
     "prepare": "husky",
     "lint": "pnpm dlx ultracite lint",
@@ -27,6 +27,7 @@
     "@types/node": "^24.0.13",
     "@types/yargs": "^17.0.33",
     "husky": "^9.1.7",
+    "memfs": "^4.17.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3",
     "ultracite": "5.0.35",

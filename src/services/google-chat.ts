@@ -1,19 +1,25 @@
-import { writeFile } from 'node:fs/promises';
+import { createWriteStream, unlink } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
 import http from 'node:http';
+import https from 'node:https';
+import path from 'node:path';
 import url from 'node:url';
-import type { GaxiosResponse } from 'gaxios';
+import type { GaxiosError, GaxiosResponse } from 'gaxios';
 import { OAuth2Client } from 'google-auth-library';
 import { type chat_v1, google } from 'googleapis';
 import { config } from '../config';
-import type { GoogleMessage, Space } from '../types/google-chat';
+import type { GoogleMessage, Space, User } from '../types/google-chat';
 import { getToken, setToken } from '../utils/token-manager';
 
 const REDIRECT_URI = 'http://localhost:3000';
+const USER_ID_REGEX = /^(users\/|people\/)/;
 
 const SCOPES = [
   'https://www.googleapis.com/auth/chat.spaces.readonly',
   'https://www.googleapis.com/auth/chat.messages.readonly',
   'https://www.googleapis.com/auth/chat.memberships.readonly',
+  'profile',
+  'email',
 ];
 
 function getOauth2Client(): OAuth2Client {
@@ -24,17 +30,8 @@ function getOauth2Client(): OAuth2Client {
   );
 }
 
-export async function loginToGoogleChat(): Promise<void> {
-  const oAuth2Client = getOauth2Client();
-
-  const authUrl = oAuth2Client.generateAuthUrl({
-    access_type: 'offline',
-    scope: SCOPES,
-  });
-
-  console.log('Authorize this app by visiting this url:', authUrl);
-
-  const code = await new Promise<string>((resolve, reject) => {
+function startServerForCodeRedirect(): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     const server = http.createServer((req, res) => {
       const parsedUrl = url.parse(req.url ?? '', true);
       const authCode = parsedUrl.query.code as string;
@@ -55,11 +52,24 @@ export async function loginToGoogleChat(): Promise<void> {
 
     server.listen(3000, () => {
       console.log('Listening for redirect on http://localhost:3000');
-      import('open').then(({ default: open }) => open(authUrl));
     });
 
     server.on('error', reject);
   });
+}
+
+export async function loginToGoogleChat(): Promise<void> {
+  const oAuth2Client = getOauth2Client();
+
+  const authUrl = oAuth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: SCOPES,
+  });
+
+  console.log('Authorize this app by visiting this url:', authUrl);
+  import('open').then(({ default: open }) => open(authUrl));
+
+  const code = await startServerForCodeRedirect();
 
   const { tokens } = await oAuth2Client.getToken(code);
   if (tokens.refresh_token) {
@@ -70,7 +80,7 @@ export async function loginToGoogleChat(): Promise<void> {
   }
 }
 
-async function getGoogleChatClient(): Promise<chat_v1.Chat> {
+async function getAuthenticatedOauth2Client(): Promise<OAuth2Client> {
   const oAuth2Client = getOauth2Client();
   const refreshToken = await getToken('google-chat');
   if (!refreshToken) {
@@ -83,9 +93,88 @@ async function getGoogleChatClient(): Promise<chat_v1.Chat> {
   const { token: accessToken } = await oAuth2Client.getAccessToken();
   oAuth2Client.setCredentials({ access_token: accessToken });
 
+  return oAuth2Client;
+}
+
+async function getGoogleChatClient(): Promise<chat_v1.Chat> {
+  const oAuth2Client = await getAuthenticatedOauth2Client();
   return google.chat({
     version: 'v1',
     auth: oAuth2Client,
+  });
+}
+
+async function getUser(userId: string): Promise<User | null> {
+  try {
+    const oAuth2Client = await getAuthenticatedOauth2Client();
+    const people = google.people({ version: 'v1', auth: oAuth2Client });
+    const res = await people.people.get({
+      resourceName: `people/${userId.replace('users/', '')}`,
+      personFields: 'names,emailAddresses,photos',
+    });
+
+    const user = res.data;
+    if (!user) {
+      return null;
+    }
+
+    return {
+      name: user.resourceName ?? '',
+      displayName: user.names?.[0]?.displayName ?? '',
+      email: user.emailAddresses?.[0]?.value ?? '',
+      avatarUrl: user.photos?.[0]?.url ?? '',
+      type: 'HUMAN',
+    };
+  } catch (error) {
+    const gaxiosError = error as GaxiosError;
+    if (gaxiosError.response?.status === 404) {
+      console.warn(`User not found: ${userId}`);
+      return null;
+    }
+    throw error;
+  }
+}
+
+function downloadFileFromUrl(
+  fileUrl: string,
+  outputPath: string
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const file = createWriteStream(outputPath);
+    https
+      .get(fileUrl, (response) => {
+        if (response.statusCode !== 200) {
+          reject(
+            new Error(`Failed to get '${fileUrl}' (${response.statusCode})`)
+          );
+          return;
+        }
+        response.pipe(file);
+        file.on('finish', () => {
+          file.close();
+          resolve();
+        });
+      })
+      .on('error', (err) => {
+        unlink(outputPath, () => reject(err));
+      });
+  });
+}
+
+async function downloadAttachment(
+  resourceName: string,
+  outputPath: string
+): Promise<void> {
+  const chat = await getGoogleChatClient();
+  const res = await chat.media.download(
+    { resourceName },
+    { responseType: 'stream' }
+  );
+  const dest = createWriteStream(outputPath);
+  res.data.pipe(dest);
+  await new Promise<void>((resolve, reject) => {
+    dest.on('finish', () => resolve());
+    dest.on('error', reject);
   });
 }
 
@@ -110,6 +199,40 @@ export async function listSpaces(): Promise<Space[]> {
   return spaces;
 }
 
+async function processDryRunMessage(
+  message: GoogleMessage,
+  avatarsDir: string,
+  attachmentsDir: string
+): Promise<void> {
+  if (message.sender) {
+    const user = await getUser(message.sender.name);
+    if (user?.avatarUrl) {
+      const avatarPath = path.join(
+        avatarsDir,
+        `${user.name.replace(USER_ID_REGEX, '')}.jpg`
+      );
+      console.log(`[Dry Run] Downloading avatar for user: ${user.name}`);
+      await downloadFileFromUrl(user.avatarUrl, avatarPath);
+      user.avatarUrl = avatarPath;
+    }
+    if (user) {
+      message.sender = user;
+    }
+  }
+
+  if (message.attachments && message.attachments.length > 0) {
+    const attachment = message.attachments[0];
+    if (attachment.resourceName) {
+      const attachmentPath = path.join(attachmentsDir, attachment.contentName);
+      console.log(
+        `[Dry Run] Downloading attachment: ${attachment.contentName}`
+      );
+      await downloadAttachment(attachment.resourceName, attachmentPath);
+      attachment.downloadUri = attachmentPath;
+    }
+  }
+}
+
 async function exportGoogleChatDataDryRun(
   spaceId: string | undefined,
   outputPath: string
@@ -131,9 +254,19 @@ async function exportGoogleChatDataDryRun(
   }
 
   const space = targetSpaces[0];
+  const outputDir = path.dirname(outputPath);
+  const avatarsDir = path.join(outputDir, 'avatars');
+  const attachmentsDir = path.join(outputDir, 'attachments');
+  await mkdir(avatarsDir, { recursive: true });
+  await mkdir(attachmentsDir, { recursive: true });
+
   console.log(`[Dry Run] Fetching 1 message from space: ${space.displayName}`);
   const messages = await listMessages(space.name, 1);
   console.log(`[Dry Run] Found ${messages.length} message(s).`);
+
+  if (messages.length > 0) {
+    await processDryRunMessage(messages[0], avatarsDir, attachmentsDir);
+  }
 
   const exportedSpace = {
     ...space,
@@ -199,6 +332,12 @@ export async function exportGoogleChatData(
     return;
   }
 
+  const outputDir = path.dirname(outputPath);
+  const avatarsDir = path.join(outputDir, 'avatars');
+  const attachmentsDir = path.join(outputDir, 'attachments');
+  await mkdir(avatarsDir, { recursive: true });
+  await mkdir(attachmentsDir, { recursive: true });
+
   const exportedSpaces: (Space & { messages: GoogleMessage[] })[] =
     await Promise.all(
       targetSpaces.map(async (space) => {
@@ -207,6 +346,44 @@ export async function exportGoogleChatData(
         console.log(
           `Found ${messages.length} messages in ${space.displayName}.`
         );
+
+        await Promise.all(
+          messages.map(async (message) => {
+            if (message.sender) {
+              const user = await getUser(message.sender.name);
+              if (user?.avatarUrl) {
+                const avatarPath = path.join(
+                  avatarsDir,
+                  `${user.name.replace(USER_ID_REGEX, '')}.jpg`
+                );
+                await downloadFileFromUrl(user.avatarUrl, avatarPath);
+                user.avatarUrl = avatarPath;
+              }
+              if (user) {
+                message.sender = user;
+              }
+            }
+
+            if (message.attachments) {
+              await Promise.all(
+                message.attachments.map(async (attachment) => {
+                  if (attachment.resourceName) {
+                    const attachmentPath = path.join(
+                      attachmentsDir,
+                      attachment.contentName
+                    );
+                    await downloadAttachment(
+                      attachment.resourceName,
+                      attachmentPath
+                    );
+                    attachment.downloadUri = attachmentPath;
+                  }
+                })
+              );
+            }
+          })
+        );
+
         return {
           ...space,
           messages,

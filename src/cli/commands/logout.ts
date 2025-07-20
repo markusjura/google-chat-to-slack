@@ -10,13 +10,13 @@ export const logoutCommand: CommandModule<object, LogoutArgs> = {
   describe: 'Logout from a chat service',
   builder: (yargs) =>
     yargs.positional('service', {
-      describe: 'The chat service to log out from (e.g., google-chat)',
+      describe: 'The chat service to logout from (e.g., google-chat)',
       type: 'string',
       demandOption: true,
     }),
-  handler: (argv) => {
+  handler: async (argv) => {
     if (argv.service === 'google-chat') {
-      deleteToken('google-chat');
+      await deleteToken('google-chat');
       console.log('Successfully logged out from Google Chat.');
     } else {
       console.error(`Unsupported service: ${argv.service}`);

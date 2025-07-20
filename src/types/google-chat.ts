@@ -31,6 +31,7 @@ export interface User {
   type: 'HUMAN' | 'BOT';
   displayName?: string;
   email?: string;
+  avatarUrl?: string;
 }
 
 export interface GoogleAttachment {
@@ -40,6 +41,7 @@ export interface GoogleAttachment {
   downloadUri: string;
   thumbnailUri: string;
   source: 'DRIVE_FILE' | 'UPLOADED_CONTENT';
+  resourceName: string;
 }
 
 export interface AttachedGif {
