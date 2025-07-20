@@ -21,7 +21,7 @@ export const exportCommand: CommandModule<object, ExportArgs> = {
         demandOption: true,
       })
       .option('space', {
-        describe: 'The ID of the space to export',
+        describe: 'The name of the space to export',
         type: 'string',
       })
       .option('output', {

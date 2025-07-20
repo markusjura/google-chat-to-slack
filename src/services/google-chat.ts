@@ -9,6 +9,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { type chat_v1, google } from 'googleapis';
 import { config } from '../config';
 import type { GoogleMessage, Space, User } from '../types/google-chat';
+import { googleChatProjectRateLimiter } from '../utils/rate-limiter';
 import { getToken, setToken } from '../utils/token-manager';
 
 const REDIRECT_URI = 'http://localhost:3000';
@@ -104,35 +105,37 @@ async function getGoogleChatClient(): Promise<chat_v1.Chat> {
   });
 }
 
-async function getUser(userId: string): Promise<User | null> {
-  try {
-    const oAuth2Client = await getAuthenticatedOauth2Client();
-    const people = google.people({ version: 'v1', auth: oAuth2Client });
-    const res = await people.people.get({
-      resourceName: `people/${userId.replace('users/', '')}`,
-      personFields: 'names,emailAddresses,photos',
-    });
+function getUser(userId: string): Promise<User | null> {
+  return googleChatProjectRateLimiter.execute(async () => {
+    try {
+      const oAuth2Client = await getAuthenticatedOauth2Client();
+      const people = google.people({ version: 'v1', auth: oAuth2Client });
+      const res = await people.people.get({
+        resourceName: `people/${userId.replace('users/', '')}`,
+        personFields: 'names,emailAddresses,photos',
+      });
 
-    const user = res.data;
-    if (!user) {
-      return null;
-    }
+      const user = res.data;
+      if (!user) {
+        return null;
+      }
 
-    return {
-      name: user.resourceName ?? '',
-      displayName: user.names?.[0]?.displayName ?? '',
-      email: user.emailAddresses?.[0]?.value ?? '',
-      avatarUrl: user.photos?.[0]?.url ?? '',
-      type: 'HUMAN',
-    };
-  } catch (error) {
-    const gaxiosError = error as GaxiosError;
-    if (gaxiosError.response?.status === 404) {
-      console.warn(`User not found: ${userId}`);
-      return null;
+      return {
+        name: user.resourceName ?? '',
+        displayName: user.names?.[0]?.displayName ?? '',
+        email: user.emailAddresses?.[0]?.value ?? '',
+        avatarUrl: user.photos?.[0]?.url ?? '',
+        type: 'HUMAN',
+      };
+    } catch (error) {
+      const gaxiosError = error as GaxiosError;
+      if (gaxiosError.response?.status === 404) {
+        console.warn(`User not found: ${userId}`);
+        return null;
+      }
+      throw error;
     }
-    throw error;
-  }
+  });
 }
 
 function downloadFileFromUrl(
@@ -161,20 +164,22 @@ function downloadFileFromUrl(
   });
 }
 
-async function downloadAttachment(
+function downloadAttachment(
   resourceName: string,
   outputPath: string
 ): Promise<void> {
-  const chat = await getGoogleChatClient();
-  const res = await chat.media.download(
-    { resourceName },
-    { responseType: 'stream' }
-  );
-  const dest = createWriteStream(outputPath);
-  res.data.pipe(dest);
-  await new Promise<void>((resolve, reject) => {
-    dest.on('finish', () => resolve());
-    dest.on('error', reject);
+  return googleChatProjectRateLimiter.execute(async () => {
+    const chat = await getGoogleChatClient();
+    const res = await chat.media.download(
+      { resourceName },
+      { responseType: 'stream' }
+    );
+    const dest = createWriteStream(outputPath);
+    res.data.pipe(dest);
+    await new Promise<void>((resolve, reject) => {
+      dest.on('finish', () => resolve());
+      dest.on('error', reject);
+    });
   });
 }
 
@@ -185,10 +190,12 @@ export async function listSpaces(): Promise<Space[]> {
 
   do {
     // biome-ignore lint/nursery/noAwaitInLoop: The Google Chat API uses pagination, and we need to await each page.
-    const res = (await chat.spaces.list({
-      pageSize: 100,
-      pageToken,
-    })) as unknown as GaxiosResponse<chat_v1.Schema$ListSpacesResponse>;
+    const res = await googleChatProjectRateLimiter.execute(async () => {
+      return (await chat.spaces.list({
+        pageSize: 100,
+        pageToken,
+      })) as unknown as GaxiosResponse<chat_v1.Schema$ListSpacesResponse>;
+    });
 
     if (res.data.spaces) {
       spaces.push(...(res.data.spaces as Space[]));
@@ -266,11 +273,13 @@ export async function listMessages(
 
   do {
     // biome-ignore lint/nursery/noAwaitInLoop: The Google Chat API uses pagination, and we need to await each page.
-    const res = (await chat.spaces.messages.list({
-      parent: spaceName,
-      pageSize: limit ?? 1000,
-      pageToken,
-    })) as unknown as GaxiosResponse<chat_v1.Schema$ListMessagesResponse>;
+    const res = await googleChatProjectRateLimiter.execute(async () => {
+      return (await chat.spaces.messages.list({
+        parent: spaceName,
+        pageSize: limit ?? 1000,
+        pageToken,
+      })) as unknown as GaxiosResponse<chat_v1.Schema$ListMessagesResponse>;
+    });
 
     if (res.data.messages) {
       messages.push(...(res.data.messages as GoogleMessage[]));
@@ -285,7 +294,7 @@ export async function listMessages(
 }
 
 export async function exportGoogleChatData(
-  spaceId: string | undefined,
+  spaceName: string | undefined,
   outputPath: string,
   options: ExportOptions = {}
 ): Promise<void> {
@@ -293,8 +302,8 @@ export async function exportGoogleChatData(
   const logPrefix = dryRun ? '[Dry Run] ' : '';
 
   const allSpaces = await listSpaces();
-  let targetSpaces = spaceId
-    ? allSpaces.filter((s) => s.name === `spaces/${spaceId}`)
+  let targetSpaces = spaceName
+    ? allSpaces.filter((s) => s.displayName === spaceName)
     : allSpaces;
 
   // Apply space limit for dry-run
@@ -304,7 +313,7 @@ export async function exportGoogleChatData(
 
   if (targetSpaces.length === 0) {
     console.log(
-      `No spaces found. If you provided a space ID, ensure it's correct.`
+      `No spaces found. If you provided a space name, ensure it's correct.`
     );
     return;
   }
