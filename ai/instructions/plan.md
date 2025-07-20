@@ -72,9 +72,9 @@ The migration tool will be structured with the following commands:
 
 - **`export`**:
   - Connects to a source service (e.g., Google Chat) using stored credentials.
-  - Fetches all data (spaces, messages, users, etc.).
-  - Saves the data to a local file, preserving the source format (e.g., Google Chat API structure).
-  - **`--dry-run` flag:** Tests the connection to the source API, fetches a single space with a few messages, and verifies the process.
+  - Fetches all data (spaces, messages, users, etc.) including attachments and user avatars.
+  - Saves the data to a local directory structure with downloaded files and JSON metadata.
+  - **`--dry-run` flag:** Uses the same implementation logic but limits scope (1 message per space, 1 space max) to quickly test API connectivity and verify the full export process without downloading excessive data.
 
 - **`transform`**:
     - Reads the exported source data file.
@@ -228,9 +228,11 @@ This plan breaks the project into four main phases. For each step, implement the
     - **Status:** COMPLETED - End-to-end export functionality working including:
       - Directory structure creation (`attachments/`, `avatars/`)
       - File downloads and local path updates in JSON
-      - Dry-run mode for testing
+      - Unified dry-run implementation using options pattern (eliminates code duplication)
+      - Dry-run tests the actual production logic with limited scope (1 message, 1 space)
       - Complete error handling and authentication
     - **Verification:** `pnpm start export google-chat --dry-run` successfully exports data with downloaded avatars.
+    - **Architecture:** Refactored to use single `exportGoogleChatData()` function with `ExportOptions` interface, following Node.js/TypeScript best practices.
 
 ## Phase 2: Data Transformation
 

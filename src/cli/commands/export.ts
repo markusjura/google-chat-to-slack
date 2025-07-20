@@ -54,7 +54,9 @@ export const exportCommand: CommandModule<object, ExportArgs> = {
       await mkdir(outputDir, { recursive: true });
       const outputPath = path.join(outputDir, 'export.json');
       console.log('outputPath', outputPath);
-      await exportGoogleChatData(argv.space, outputPath, argv.dryRun);
+      await exportGoogleChatData(argv.space, outputPath, {
+        dryRun: argv.dryRun,
+      });
     } else {
       console.error(`Unsupported service: ${argv.service}`);
     }

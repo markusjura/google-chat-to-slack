@@ -199,11 +199,20 @@ export async function listSpaces(): Promise<Space[]> {
   return spaces;
 }
 
-async function processDryRunMessage(
+interface ExportOptions {
+  dryRun?: boolean;
+  messageLimit?: number;
+  spaceLimit?: number;
+}
+
+async function processMessage(
   message: GoogleMessage,
   avatarsDir: string,
-  attachmentsDir: string
+  attachmentsDir: string,
+  isDryRun = false
 ): Promise<void> {
+  const logPrefix = isDryRun ? '[Dry Run] ' : '';
+
   if (message.sender) {
     const user = await getUser(message.sender.name);
     if (user?.avatarUrl) {
@@ -211,7 +220,9 @@ async function processDryRunMessage(
         avatarsDir,
         `${user.name.replace(USER_ID_REGEX, '')}.jpg`
       );
-      console.log(`[Dry Run] Downloading avatar for user: ${user.name}`);
+      if (isDryRun) {
+        console.log(`${logPrefix}Downloading avatar for user: ${user.name}`);
+      }
       await downloadFileFromUrl(user.avatarUrl, avatarPath);
       user.avatarUrl = avatarPath;
     }
@@ -220,66 +231,29 @@ async function processDryRunMessage(
     }
   }
 
-  if (message.attachments && message.attachments.length > 0) {
-    const attachment = message.attachments[0];
-    if (attachment.resourceName) {
-      const attachmentPath = path.join(attachmentsDir, attachment.contentName);
-      console.log(
-        `[Dry Run] Downloading attachment: ${attachment.contentName}`
-      );
-      await downloadAttachment(attachment.resourceName, attachmentPath);
-      attachment.downloadUri = attachmentPath;
-    }
-  }
-}
+  if (message.attachments) {
+    const attachmentsToProcess = isDryRun
+      ? message.attachments.slice(0, 1)
+      : message.attachments;
 
-async function exportGoogleChatDataDryRun(
-  spaceId: string | undefined,
-  outputPath: string
-): Promise<void> {
-  const allSpaces = await listSpaces();
-  let targetSpaces: Space[];
-
-  if (spaceId) {
-    targetSpaces = allSpaces.filter((s) => s.name === `spaces/${spaceId}`);
-  } else {
-    targetSpaces = allSpaces.length > 0 ? [allSpaces[0]] : [];
-  }
-
-  if (targetSpaces.length === 0) {
-    console.log(
-      `No spaces found. If you provided a space ID, ensure it's correct.`
+    await Promise.all(
+      attachmentsToProcess.map(async (attachment) => {
+        if (attachment.resourceName) {
+          const attachmentPath = path.join(
+            attachmentsDir,
+            attachment.contentName
+          );
+          if (isDryRun) {
+            console.log(
+              `${logPrefix}Downloading attachment: ${attachment.contentName}`
+            );
+          }
+          await downloadAttachment(attachment.resourceName, attachmentPath);
+          attachment.downloadUri = attachmentPath;
+        }
+      })
     );
-    return;
   }
-
-  const space = targetSpaces[0];
-  const outputDir = path.dirname(outputPath);
-  const avatarsDir = path.join(outputDir, 'avatars');
-  const attachmentsDir = path.join(outputDir, 'attachments');
-  await mkdir(avatarsDir, { recursive: true });
-  await mkdir(attachmentsDir, { recursive: true });
-
-  console.log(`[Dry Run] Fetching 1 message from space: ${space.displayName}`);
-  const messages = await listMessages(space.name, 1);
-  console.log(`[Dry Run] Found ${messages.length} message(s).`);
-
-  if (messages.length > 0) {
-    await processDryRunMessage(messages[0], avatarsDir, attachmentsDir);
-  }
-
-  const exportedSpace = {
-    ...space,
-    messages,
-  };
-
-  const exportData = {
-    export_timestamp: new Date().toISOString(),
-    spaces: [exportedSpace],
-  };
-
-  await writeFile(outputPath, JSON.stringify(exportData, null, 2));
-  console.log(`[Dry Run] Exported data to ${outputPath}`);
 }
 
 export async function listMessages(
@@ -313,17 +287,20 @@ export async function listMessages(
 export async function exportGoogleChatData(
   spaceId: string | undefined,
   outputPath: string,
-  dryRun?: boolean
+  options: ExportOptions = {}
 ): Promise<void> {
-  if (dryRun) {
-    await exportGoogleChatDataDryRun(spaceId, outputPath);
-    return;
-  }
+  const { dryRun = false, messageLimit, spaceLimit = 1 } = options;
+  const logPrefix = dryRun ? '[Dry Run] ' : '';
 
-  const spaces = await listSpaces();
-  const targetSpaces = spaceId
-    ? spaces.filter((s) => s.name === `spaces/${spaceId}`)
-    : spaces;
+  const allSpaces = await listSpaces();
+  let targetSpaces = spaceId
+    ? allSpaces.filter((s) => s.name === `spaces/${spaceId}`)
+    : allSpaces;
+
+  // Apply space limit for dry-run
+  if (dryRun) {
+    targetSpaces = targetSpaces.slice(0, spaceLimit);
+  }
 
   if (targetSpaces.length === 0) {
     console.log(
@@ -341,46 +318,24 @@ export async function exportGoogleChatData(
   const exportedSpaces: (Space & { messages: GoogleMessage[] })[] =
     await Promise.all(
       targetSpaces.map(async (space) => {
-        console.log(`Fetching messages from space: ${space.displayName}`);
-        const messages = await listMessages(space.name);
+        const fetchLimit = dryRun ? (messageLimit ?? 1) : undefined;
+
+        if (dryRun) {
+          console.log(
+            `${logPrefix}Fetching ${fetchLimit} message(s) from space: ${space.displayName}`
+          );
+        } else {
+          console.log(`Fetching messages from space: ${space.displayName}`);
+        }
+
+        const messages = await listMessages(space.name, fetchLimit);
         console.log(
-          `Found ${messages.length} messages in ${space.displayName}.`
+          `${logPrefix}Found ${messages.length} message(s) in ${space.displayName}.`
         );
 
         await Promise.all(
           messages.map(async (message) => {
-            if (message.sender) {
-              const user = await getUser(message.sender.name);
-              if (user?.avatarUrl) {
-                const avatarPath = path.join(
-                  avatarsDir,
-                  `${user.name.replace(USER_ID_REGEX, '')}.jpg`
-                );
-                await downloadFileFromUrl(user.avatarUrl, avatarPath);
-                user.avatarUrl = avatarPath;
-              }
-              if (user) {
-                message.sender = user;
-              }
-            }
-
-            if (message.attachments) {
-              await Promise.all(
-                message.attachments.map(async (attachment) => {
-                  if (attachment.resourceName) {
-                    const attachmentPath = path.join(
-                      attachmentsDir,
-                      attachment.contentName
-                    );
-                    await downloadAttachment(
-                      attachment.resourceName,
-                      attachmentPath
-                    );
-                    attachment.downloadUri = attachmentPath;
-                  }
-                })
-              );
-            }
+            await processMessage(message, avatarsDir, attachmentsDir, dryRun);
           })
         );
 
@@ -397,5 +352,5 @@ export async function exportGoogleChatData(
   };
 
   await writeFile(outputPath, JSON.stringify(exportData, null, 2));
-  console.log(`Exported data to ${outputPath}`);
+  console.log(`${logPrefix}Exported data to ${outputPath}`);
 }
