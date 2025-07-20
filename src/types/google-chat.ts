@@ -21,6 +21,7 @@ export interface GoogleMessage {
     name: string;
   };
   attachments?: GoogleAttachment[];
+  attachment?: GoogleAttachment[];
   attachedGifs?: AttachedGif[];
   emojiReactionSummaries?: EmojiReactionSummary[];
   annotations?: Annotation[];
@@ -36,12 +37,20 @@ export interface User {
 
 export interface GoogleAttachment {
   name: string;
-  contentName: string;
-  contentType: string;
-  downloadUri: string;
-  thumbnailUri: string;
-  source: 'DRIVE_FILE' | 'UPLOADED_CONTENT';
-  resourceName: string;
+  contentName?: string;
+  contentType?: string;
+  downloadUri?: string;
+  thumbnailUri?: string;
+  source?: 'DRIVE_FILE' | 'UPLOADED_CONTENT';
+  resourceName?: string;
+  attachmentDataRef?: {
+    resourceName: string;
+  };
+  driveDataRef?: {
+    driveFileId: string;
+  };
+  // Local file path after download
+  localFilePath?: string;
 }
 
 export interface AttachedGif {

@@ -364,7 +364,7 @@ async function transformSingleMessage(
 
   const [attachments, reactions, mentions] = await Promise.all([
     transformAttachments(
-      message.attachments || [],
+      message.attachments || message.attachment || [],
       inputDir,
       outputDir,
       dryRun
@@ -445,7 +445,9 @@ async function transformAttachments(
   dryRun: boolean
 ): Promise<SlackImportAttachment[]> {
   const validAttachments = googleAttachments.filter(
-    (attachment) => attachment.contentName && attachment.contentType
+    (attachment) =>
+      (attachment.localFilePath || attachment.contentName) &&
+      attachment.contentType
   );
 
   if (!dryRun && validAttachments.length > 0) {
@@ -454,32 +456,29 @@ async function transformAttachments(
   }
 
   const attachmentPromises = validAttachments.map(async (attachment) => {
-    const sourceFile = path.join(
-      inputDir,
-      'attachments',
-      attachment.contentName
-    );
-    const destFile = path.join(
-      outputDir,
-      'attachments',
-      attachment.contentName
-    );
+    // Use localFilePath if available, fallback to contentName for backward compatibility
+    const sourceFileName = attachment.localFilePath
+      ? path.basename(attachment.localFilePath)
+      : attachment.contentName;
+
+    const sourceFile = path.join(inputDir, 'attachments', sourceFileName);
+    const destFile = path.join(outputDir, 'attachments', sourceFileName);
 
     if (!dryRun) {
       try {
         await copyFile(sourceFile, destFile);
       } catch {
-        console.warn(`Could not copy attachment: ${attachment.contentName}`);
+        console.warn(`Could not copy attachment: ${sourceFileName}`);
         return null;
       }
     }
 
     return {
-      filename: attachment.contentName,
+      filename: sourceFileName,
       content_type: attachment.contentType,
       local_path: destFile,
-      title: attachment.name || attachment.contentName,
-      alt_text: `Attachment: ${attachment.contentName}`,
+      title: attachment.name || sourceFileName,
+      alt_text: `Attachment: ${sourceFileName}`,
     };
   });
 
