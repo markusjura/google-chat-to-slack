@@ -103,14 +103,15 @@ The `export` command generates an `export.json` file containing the raw data fro
 #### 6.1.1. File Structure
 
 ```
-/
-├── /attachments/
-│   ├── attachment_1.png
-│   └── attachment_2.pdf
-├── /avatars/
-│   ├── 113850239791407514368.jpg
-│   └── 987654321098765432109.jpg
-└── export.json
+data/
+└── export/
+    ├── attachments/
+    │   ├── attachment_1.png
+    │   └── attachment_2.pdf
+    ├── avatars/
+    │   ├── 113850239791407514368.jpg
+    │   └── 987654321098765432109.jpg
+    └── export.json
 ```
 
 #### 6.1.2. `export.json` Specification
@@ -239,16 +240,18 @@ This plan breaks the project into four main phases. For each step, implement the
 **Objective:** Build the command to transform the exported Google Chat data into the format required for Slack.
 
 1.  **Implement `transform` Command**
-    - **Action:** Create the `transform` command. It should accept `--input` and `--output` arguments.
+    - **Action:** Create the `transform` command. It should accept `--input` and `--output` arguments with clean defaults.
+    - **Default Behavior:** `--input` defaults to `data/export/`, `--output` defaults to `data/import/` (replaces existing directories)
     - **Verification:** Run `pnpm start transform --help` to ensure arguments are correctly defined.
 
 2.  **Implement Data Transformation Logic**
-    - **Action:** Create the data transformation logic that converts the Google Chat export data (`export.json`) into the Slack import format (`import.json`). This involves mapping Google Chat spaces to Slack channels and Google Chat messages to Slack messages.
-    - **Verification:** Write focused unit tests to validate the transformation for different data structures (e.g., text, attachments, threads).
+    - **Action:** Create the data transformation service that converts Google Chat export data (including `export.json`, `attachments/`, `avatars/` directories) into the Slack import format using the new 2025 Slack API types.
+    - **Features:** Handle user mapping by email, channel name normalization, thread preservation, attachment processing, emoji reactions, and user mentions.
+    - **Verification:** Write focused unit tests to validate the transformation for different data structures (text, attachments, threads, reactions, mentions).
 
 3.  **Finalize Transform and Test End-to-End**
-    - **Action:** Connect the transformation logic to the `transform` command, reading the `export.json` file and writing the final `import.json` file.
-    - **Verification:** Perform a manual end-to-end test by running `pnpm start transform --input /tmp/export.json --output /tmp/import.json`. Inspect the output JSON file to confirm its structure and content are correct for a Slack import.
+    - **Action:** Connect the transformation logic to the `transform` command, reading the complete export directory structure and writing the Slack import format with preserved file references.
+    - **Verification:** Perform a manual end-to-end test by running `pnpm start transform` (uses clean defaults: `data/export/` → `data/import/`). Inspect the output directory and JSON file to confirm structure and content are correct for Slack import using 2025 APIs.
 
 ## Phase 3: Slack Import Functionality
 

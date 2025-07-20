@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { CommandModule } from 'yargs';
-import { exportGoogleChatData, listSpaces } from '../../services/google-chat';
+import { exportGoogleChatData } from '../../services/google-chat';
 
 type ExportArgs = {
   service: string;
@@ -35,23 +35,16 @@ export const exportCommand: CommandModule<object, ExportArgs> = {
       }),
   handler: async (argv) => {
     if (argv.service === 'google-chat') {
-      let spaceName = 'all-spaces';
-      if (argv.space) {
-        const spaces = await listSpaces();
-        const currentSpace = spaces.find(
-          (s) => s.name === `spaces/${argv.space}`
-        );
-        if (currentSpace) {
-          spaceName =
-            currentSpace.displayName?.replace(/\s/g, '-') ?? argv.space;
-        }
-      }
-
-      const timestamp = new Date().toISOString();
-      const outputDir = path.resolve(argv.output, `${spaceName}-${timestamp}`);
+      const outputDir = path.resolve(argv.output);
       console.log('outputDir', outputDir);
 
+      // Remove existing directory if it exists, then create fresh
+      const fs = require('node:fs');
+      if (fs.existsSync(outputDir)) {
+        await fs.promises.rm(outputDir, { recursive: true, force: true });
+      }
       await mkdir(outputDir, { recursive: true });
+
       const outputPath = path.join(outputDir, 'export.json');
       console.log('outputPath', outputPath);
       await exportGoogleChatData(argv.space, outputPath, {
