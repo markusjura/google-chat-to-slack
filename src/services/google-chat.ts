@@ -15,6 +15,8 @@ import type {
   Space,
   User,
 } from '../types/google-chat';
+import { Logger } from '../utils/logger';
+import { ProgressBar } from '../utils/progress-bar';
 import { googleChatProjectRateLimiter } from '../utils/rate-limiter';
 import { getToken, setToken } from '../utils/token-manager';
 
@@ -112,7 +114,7 @@ async function getGoogleChatClient(): Promise<chat_v1.Chat> {
   });
 }
 
-function getUser(userId: string): Promise<User | null> {
+function getUser(userId: string, logger: Logger): Promise<User | null> {
   return googleChatProjectRateLimiter.execute(async () => {
     try {
       const oAuth2Client = await getAuthenticatedOauth2Client();
@@ -137,26 +139,40 @@ function getUser(userId: string): Promise<User | null> {
     } catch (error) {
       const gaxiosError = error as GaxiosError;
       if (gaxiosError.response?.status === 404) {
-        console.warn(`User not found: ${userId}`);
+        logger.addWarning('user_fetch', userId, 'User not found');
         return null;
       }
-      throw error;
+      if (gaxiosError.response?.status === 403) {
+        logger.addPermissionWarning('user_fetch', userId, 'user profile');
+        return null;
+      }
+      logger.addError(
+        'user_fetch',
+        userId,
+        error instanceof Error ? error.message : String(error)
+      );
+      return null;
     }
   });
 }
 
 function downloadFileFromUrl(
   fileUrl: string,
-  outputPath: string
-): Promise<void> {
-  return new Promise((resolve, reject) => {
+  outputPath: string,
+  logger: Logger,
+  identifier: string
+): Promise<boolean> {
+  return new Promise((resolve) => {
     const file = createWriteStream(outputPath);
     let _totalBytes = 0;
 
     function handleRequest(requestUrl: string, redirectCount = 0): void {
       if (redirectCount > 5) {
         file.close();
-        unlink(outputPath, () => reject(new Error('Too many redirects')));
+        unlink(outputPath, () => {
+          logger.addError('avatar_download', identifier, 'Too many redirects');
+          resolve(false);
+        });
         return;
       }
 
@@ -180,13 +196,29 @@ function downloadFileFromUrl(
 
           if (response.statusCode !== 200) {
             file.close();
-            unlink(outputPath, () =>
-              reject(
-                new Error(
-                  `HTTP ${response.statusCode}: ${response.statusMessage || 'Unknown error'}`
-                )
-              )
-            );
+            unlink(outputPath, () => {
+              const statusCode = response.statusCode || 0;
+              if (statusCode === 403) {
+                logger.addPermissionWarning(
+                  'avatar_download',
+                  identifier,
+                  'avatar'
+                );
+              } else if (statusCode === 404) {
+                logger.addWarning(
+                  'avatar_download',
+                  identifier,
+                  'Avatar not found'
+                );
+              } else {
+                logger.addError(
+                  'avatar_download',
+                  identifier,
+                  `HTTP ${statusCode}: ${response.statusMessage || 'Unknown error'}`
+                );
+              }
+              resolve(false);
+            });
             return;
           }
 
@@ -198,22 +230,31 @@ function downloadFileFromUrl(
 
           file.on('finish', () => {
             file.close();
-            resolve();
+            resolve(true);
           });
 
           file.on('error', (err) => {
             file.close();
-            unlink(outputPath, () => reject(err));
+            unlink(outputPath, () => {
+              logger.addError('avatar_download', identifier, err.message);
+              resolve(false);
+            });
           });
 
           response.on('error', (err) => {
             file.close();
-            unlink(outputPath, () => reject(err));
+            unlink(outputPath, () => {
+              logger.addError('avatar_download', identifier, err.message);
+              resolve(false);
+            });
           });
         })
         .on('error', (err) => {
           file.close();
-          unlink(outputPath, () => reject(err));
+          unlink(outputPath, () => {
+            logger.addError('avatar_download', identifier, err.message);
+            resolve(false);
+          });
         });
     }
 
@@ -248,12 +289,18 @@ function downloadAttachment(
         );
       }
       if (response.status === 403) {
-        throw new Error(
+        const permissionError = new Error(
           `Access denied to attachment ${resourceName}. You may lack permission to access this resource.`
         );
+        (permissionError as any).isPermissionError = true;
+        throw permissionError;
       }
       if (response.status === 404) {
-        throw new Error(`Attachment ${resourceName} not found.`);
+        const notFoundError = new Error(
+          `Attachment ${resourceName} not found.`
+        );
+        (notFoundError as any).isNotFoundError = true;
+        throw notFoundError;
       }
       throw new Error(
         `HTTP ${response.status}: ${response.statusText} - ${errorText}`
@@ -296,12 +343,19 @@ function downloadGoogleDriveFile(
     } catch (error) {
       const gaxiosError = error as GaxiosError;
       if (gaxiosError.response?.status === 403) {
-        throw new Error(
+        // Create a special error type for permission issues that will be logged as warning
+        const permissionError = new Error(
           `Access denied to Google Drive file ${driveFileId}. The file may be private or you may lack permission to access it.`
         );
+        (permissionError as any).isPermissionError = true;
+        throw permissionError;
       }
       if (gaxiosError.response?.status === 404) {
-        throw new Error(`Google Drive file ${driveFileId} not found.`);
+        const notFoundError = new Error(
+          `Google Drive file ${driveFileId} not found.`
+        );
+        (notFoundError as any).isNotFoundError = true;
+        throw notFoundError;
       }
       throw error;
     }
@@ -481,39 +535,57 @@ async function downloadAttachmentFile(
   attachment: GoogleAttachment,
   attachmentPath: string,
   uniqueFilename: string,
-  logPrefix: string
-): Promise<void> {
-  if (
-    attachment.source === 'DRIVE_FILE' &&
-    attachment.driveDataRef?.driveFileId
-  ) {
-    // Google Drive files - use Drive API
-    await downloadGoogleDriveFile(
-      attachment.driveDataRef.driveFileId,
-      attachmentPath
-    );
-    attachment.localFilePath = attachmentPath;
-  } else if (
-    attachment.source === 'UPLOADED_CONTENT' &&
-    attachment.attachmentDataRef?.resourceName
-  ) {
-    // Chat uploaded content - use media API with resourceName
-    await downloadAttachment(
-      attachment.attachmentDataRef.resourceName,
-      attachmentPath
-    );
-    attachment.localFilePath = attachmentPath;
-  } else if (attachment.downloadUri) {
-    // Fallback to downloadUri (may require browser session)
-    await downloadAuthenticatedUrl(attachment.downloadUri, attachmentPath);
-    attachment.localFilePath = attachmentPath;
-  } else {
-    console.warn(
-      `${logPrefix}No download method available for: ${uniqueFilename}`
-    );
-    console.warn(
-      `${logPrefix}Attachment source: ${attachment.source}, has driveDataRef: ${!!attachment.driveDataRef}, has attachmentDataRef: ${!!attachment.attachmentDataRef}`
-    );
+  logger: Logger
+): Promise<boolean> {
+  try {
+    if (
+      attachment.source === 'DRIVE_FILE' &&
+      attachment.driveDataRef?.driveFileId
+    ) {
+      // Google Drive files - use Drive API
+      await downloadGoogleDriveFile(
+        attachment.driveDataRef.driveFileId,
+        attachmentPath
+      );
+      attachment.localFilePath = attachmentPath;
+      return true;
+    } else if (
+      attachment.source === 'UPLOADED_CONTENT' &&
+      attachment.attachmentDataRef?.resourceName
+    ) {
+      // Chat uploaded content - use media API with resourceName
+      await downloadAttachment(
+        attachment.attachmentDataRef.resourceName,
+        attachmentPath
+      );
+      attachment.localFilePath = attachmentPath;
+      return true;
+    } else if (attachment.downloadUri) {
+      // Fallback to downloadUri (may require browser session)
+      await downloadAuthenticatedUrl(attachment.downloadUri, attachmentPath);
+      attachment.localFilePath = attachmentPath;
+      return true;
+    } else {
+      logger.addWarning(
+        'attachment_download',
+        uniqueFilename,
+        'No download method available',
+        `Source: ${attachment.source}, has driveDataRef: ${!!attachment.driveDataRef}, has attachmentDataRef: ${!!attachment.attachmentDataRef}`
+      );
+      return false;
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // Check if this is a permission or not found error (should be warning)
+    if ((error as any).isPermissionError) {
+      logger.addWarning('attachment_download', uniqueFilename, errorMessage);
+    } else if ((error as any).isNotFoundError) {
+      logger.addWarning('attachment_download', uniqueFilename, errorMessage);
+    } else {
+      logger.addError('attachment_download', uniqueFilename, errorMessage);
+    }
+    return false;
   }
 }
 
@@ -523,8 +595,8 @@ async function processAttachment(
   messageId: string,
   attachmentsDir: string,
   isDryRun: boolean,
-  logPrefix: string
-): Promise<void> {
+  logger: Logger
+): Promise<boolean> {
   const filename = generateAttachmentFilename(attachment, index);
   const extension = getFileExtension(attachment);
   const uniqueFilename = `${messageId}_${filename}_${index}${extension}`;
@@ -532,83 +604,196 @@ async function processAttachment(
 
   if (isDryRun) {
     attachment.localFilePath = attachmentPath;
-    return;
+    return true;
   }
 
   // Download full attachment
-  try {
-    await downloadAttachmentFile(
-      attachment,
-      attachmentPath,
-      uniqueFilename,
-      logPrefix
-    );
-  } catch (error) {
-    const gaxiosError = error as GaxiosError;
-    const statusCode = gaxiosError.response?.status;
-    const errorData = gaxiosError.response?.data;
-    console.warn(
-      `${logPrefix}Failed to download attachment ${uniqueFilename}: ${statusCode} - ${error instanceof Error ? error.message : String(error)}`
-    );
-    if (errorData) {
-      console.warn(`${logPrefix}Error details:`, errorData);
-    }
+  return await downloadAttachmentFile(
+    attachment,
+    attachmentPath,
+    uniqueFilename,
+    logger
+  );
+}
+
+interface ProcessMessageResult {
+  attachmentsProcessed: number;
+  attachmentsSuccessful: number;
+  avatarsProcessed: number;
+  avatarsSuccessful: number;
+}
+
+interface ExportSummaryOptions {
+  attachmentsProcessed: number;
+  attachmentsSuccessful: number;
+  avatarsProcessed: number;
+  avatarsSuccessful: number;
+  driveFiles: number;
+  logger: Logger;
+  logPath: string;
+  isDryRun: boolean;
+}
+
+function displayExportSummary(options: ExportSummaryOptions): void {
+  const {
+    attachmentsProcessed,
+    attachmentsSuccessful,
+    avatarsProcessed,
+    avatarsSuccessful,
+    driveFiles,
+    logger,
+    logPath,
+    isDryRun,
+  } = options;
+
+  if (attachmentsProcessed === 0 && avatarsProcessed === 0) {
+    return;
   }
+
+  console.log(`\n📊 Export Summary:`);
+
+  if (attachmentsProcessed > 0) {
+    console.log(
+      `   Attachments: ${attachmentsSuccessful}/${attachmentsProcessed} downloaded successfully`
+    );
+    console.log(`   • Google Drive files: ${driveFiles}`);
+    console.log(`   • Chat attachments: ${attachmentsProcessed - driveFiles}`);
+  }
+
+  if (avatarsProcessed > 0) {
+    console.log(
+      `   Avatars: ${avatarsSuccessful}/${avatarsProcessed} downloaded successfully`
+    );
+  }
+
+  const errorCount = logger.getErrorCount();
+  const warningCount = logger.getWarningCount();
+
+  if (errorCount > 0 || warningCount > 0) {
+    console.log('');
+    if (errorCount > 0) {
+      console.log(`🚨 ${errorCount} error(s) occurred during export`);
+    }
+    if (warningCount > 0) {
+      console.log(`⚠️  ${warningCount} warning(s) occurred during export`);
+    }
+    if (logPath) {
+      console.log(`   Details: ${logPath}`);
+    }
+  } else if (!isDryRun) {
+    console.log(`\n✅ Export completed successfully with no issues`);
+  }
+}
+
+async function processMessageSender(
+  message: GoogleMessage,
+  avatarsDir: string,
+  isDryRun: boolean,
+  logger: Logger
+): Promise<{ processed: number; successful: number }> {
+  if (!message.sender) {
+    return { processed: 0, successful: 0 };
+  }
+
+  const user = await getUser(message.sender.name, logger);
+  if (!user?.avatarUrl) {
+    if (user) {
+      message.sender = user;
+    }
+    return { processed: 0, successful: 0 };
+  }
+
+  const avatarPath = path.join(
+    avatarsDir,
+    `${user.name.replace(USER_ID_REGEX, '')}.jpg`
+  );
+
+  if (isDryRun) {
+    user.avatarUrl = avatarPath;
+    message.sender = user;
+    return { processed: 1, successful: 1 };
+  }
+
+  const success = await downloadFileFromUrl(
+    user.avatarUrl,
+    avatarPath,
+    logger,
+    user.name.replace(USER_ID_REGEX, '')
+  );
+
+  if (success) {
+    user.avatarUrl = avatarPath;
+  }
+  message.sender = user;
+  return { processed: 1, successful: success ? 1 : 0 };
+}
+
+async function processMessageAttachments(
+  message: GoogleMessage,
+  attachmentsDir: string,
+  isDryRun: boolean,
+  logger: Logger
+): Promise<{ processed: number; successful: number }> {
+  const allAttachments = [
+    ...(message.attachments || []),
+    ...(message.attachment || []),
+  ];
+
+  if (allAttachments.length === 0) {
+    return { processed: 0, successful: 0 };
+  }
+
+  const attachmentsToProcess = isDryRun
+    ? allAttachments.slice(0, 1)
+    : allAttachments;
+
+  const messageId = message.name.split('/').pop() || 'unknown';
+
+  const results = await Promise.all(
+    attachmentsToProcess.map(async (attachment, index) =>
+      processAttachment(
+        attachment,
+        index,
+        messageId,
+        attachmentsDir,
+        isDryRun,
+        logger
+      )
+    )
+  );
+
+  return {
+    processed: attachmentsToProcess.length,
+    successful: results.filter(Boolean).length,
+  };
 }
 
 async function processMessage(
   message: GoogleMessage,
   avatarsDir: string,
   attachmentsDir: string,
-  isDryRun = false
-): Promise<void> {
-  const logPrefix = isDryRun ? '[Dry Run] ' : '';
+  isDryRun: boolean,
+  logger: Logger
+): Promise<ProcessMessageResult> {
+  const avatarResult = await processMessageSender(
+    message,
+    avatarsDir,
+    isDryRun,
+    logger
+  );
+  const attachmentResult = await processMessageAttachments(
+    message,
+    attachmentsDir,
+    isDryRun,
+    logger
+  );
 
-  if (message.sender) {
-    const user = await getUser(message.sender.name);
-    if (user?.avatarUrl) {
-      const avatarPath = path.join(
-        avatarsDir,
-        `${user.name.replace(USER_ID_REGEX, '')}.jpg`
-      );
-      if (isDryRun) {
-        user.avatarUrl = avatarPath;
-      } else {
-        await downloadFileFromUrl(user.avatarUrl, avatarPath);
-        user.avatarUrl = avatarPath;
-      }
-    }
-    if (user) {
-      message.sender = user;
-    }
-  }
-
-  // Handle both "attachments" and "attachment" fields
-  const allAttachments = [
-    ...(message.attachments || []),
-    ...(message.attachment || []),
-  ];
-
-  if (allAttachments.length > 0) {
-    const attachmentsToProcess = isDryRun
-      ? allAttachments.slice(0, 1)
-      : allAttachments;
-
-    const messageId = message.name.split('/').pop() || 'unknown';
-
-    await Promise.all(
-      attachmentsToProcess.map(async (attachment, index) =>
-        processAttachment(
-          attachment,
-          index,
-          messageId,
-          attachmentsDir,
-          isDryRun,
-          logPrefix
-        )
-      )
-    );
-  }
+  return {
+    attachmentsProcessed: attachmentResult.processed,
+    attachmentsSuccessful: attachmentResult.successful,
+    avatarsProcessed: avatarResult.processed,
+    avatarsSuccessful: avatarResult.successful,
+  };
 }
 
 export async function listMessages(
@@ -641,6 +826,60 @@ export async function listMessages(
   return messages;
 }
 
+interface SpaceOverview {
+  space: Space;
+  messageCount: number;
+  messages: GoogleMessage[];
+}
+
+async function getSpaceOverviews(
+  targetSpaces: Space[],
+  dryRun: boolean,
+  messageLimit?: number
+): Promise<SpaceOverview[]> {
+  const overviews: SpaceOverview[] = [];
+
+  for (const space of targetSpaces) {
+    const fetchLimit = dryRun ? (messageLimit ?? 1) : undefined;
+    // biome-ignore lint/nursery/noAwaitInLoop: Sequential space processing is required for rate limiting and progress tracking
+    const messages = await listMessages(space.name, fetchLimit);
+
+    overviews.push({
+      space,
+      messageCount: messages.length,
+      messages,
+    });
+  }
+
+  return overviews;
+}
+
+function displayExportOverview(
+  overviews: SpaceOverview[],
+  isDryRun: boolean
+): void {
+  const totalMessages = overviews.reduce(
+    (sum, overview) => sum + overview.messageCount,
+    0
+  );
+  const logPrefix = isDryRun ? '[Dry Run] ' : '';
+
+  console.log(`${logPrefix}Export Overview:`);
+  console.log(`   Spaces: ${overviews.length}`);
+  console.log(`   Total Messages: ${totalMessages}`);
+
+  if (overviews.length > 1) {
+    console.log('\n   Space Details:');
+    for (const overview of overviews) {
+      console.log(
+        `   • ${overview.space.displayName}: ${overview.messageCount} messages`
+      );
+    }
+  }
+
+  console.log(''); // Add blank line before progress
+}
+
 export async function exportGoogleChatData(
   spaceName: string | undefined,
   outputPath: string,
@@ -648,6 +887,7 @@ export async function exportGoogleChatData(
 ): Promise<void> {
   const { dryRun = false, messageLimit, spaceLimit = 1 } = options;
   const logPrefix = dryRun ? '[Dry Run] ' : '';
+  const logger = new Logger();
 
   const allSpaces = await listSpaces();
   let targetSpaces = spaceName
@@ -672,29 +912,71 @@ export async function exportGoogleChatData(
   await mkdir(avatarsDir, { recursive: true });
   await mkdir(attachmentsDir, { recursive: true });
 
+  // Get overview of all spaces and messages first
+  const spaceOverviews = await getSpaceOverviews(
+    targetSpaces,
+    dryRun,
+    messageLimit
+  );
+  displayExportOverview(spaceOverviews, dryRun);
+
+  // Statistics tracking
+  let totalAttachmentsProcessed = 0;
+  let totalAttachmentsSuccessful = 0;
+  let totalAvatarsProcessed = 0;
+  let totalAvatarsSuccessful = 0;
+  let totalDriveFiles = 0;
+
+  // Create progress bar for message processing
+  const totalMessages = spaceOverviews.reduce(
+    (sum, overview) => sum + overview.messageCount,
+    0
+  );
+  const progressBar =
+    totalMessages > 0
+      ? new ProgressBar(totalMessages, 'Processing messages')
+      : null;
+
   const exportedSpaces: (Space & { messages: GoogleMessage[] })[] =
     await Promise.all(
-      targetSpaces.map(async (space) => {
-        const fetchLimit = dryRun ? (messageLimit ?? 1) : undefined;
+      spaceOverviews.map(async (overview) => {
+        const { space, messages } = overview;
 
-        if (dryRun) {
-          console.log(
-            `${logPrefix}Fetching ${fetchLimit} message(s) from space: ${space.displayName}`
-          );
-        } else {
-          console.log(`Fetching messages from space: ${space.displayName}`);
-        }
-
-        const messages = await listMessages(space.name, fetchLimit);
-        console.log(
-          `${logPrefix}Found ${messages.length} message(s) in ${space.displayName}.`
-        );
-
-        await Promise.all(
+        const messageResults = await Promise.all(
           messages.map(async (message) => {
-            await processMessage(message, avatarsDir, attachmentsDir, dryRun);
+            const result = await processMessage(
+              message,
+              avatarsDir,
+              attachmentsDir,
+              dryRun,
+              logger
+            );
+
+            // Update progress with safe increment for concurrent operations
+            progressBar?.safeIncrement();
+
+            return result;
           })
         );
+
+        // Aggregate statistics for this space
+        for (const result of messageResults) {
+          totalAttachmentsProcessed += result.attachmentsProcessed;
+          totalAttachmentsSuccessful += result.attachmentsSuccessful;
+          totalAvatarsProcessed += result.avatarsProcessed;
+          totalAvatarsSuccessful += result.avatarsSuccessful;
+        }
+
+        // Count drive files for this space
+        for (const message of messages) {
+          const attachments = [
+            ...(message.attachments || []),
+            ...(message.attachment || []),
+          ];
+          totalDriveFiles += attachments.filter(
+            (a) => a.driveDataRef?.driveFileId
+          ).length;
+        }
 
         return {
           ...space,
@@ -702,6 +984,9 @@ export async function exportGoogleChatData(
         };
       })
     );
+
+  // Finish progress bar
+  progressBar?.finish();
 
   const exportData = {
     export_timestamp: new Date().toISOString(),
@@ -711,26 +996,20 @@ export async function exportGoogleChatData(
   await writeFile(outputPath, JSON.stringify(exportData, null, 2));
   console.log(`${logPrefix}Exported data to ${outputPath}`);
 
-  // Count attachments for summary
-  let totalAttachments = 0;
-  let driveFiles = 0;
-  for (const space of exportedSpaces) {
-    for (const message of space.messages) {
-      const attachments = [
-        ...(message.attachments || []),
-        ...(message.attachment || []),
-      ];
-      totalAttachments += attachments.length;
-      driveFiles += attachments.filter(
-        (a) => a.driveDataRef?.driveFileId
-      ).length;
-    }
+  // Write error log if there are errors
+  let logPath = '';
+  if (logger.hasErrors() && !dryRun) {
+    logPath = await logger.writeLog(outputDir);
   }
 
-  if (totalAttachments > 0) {
-    console.log(`\n📎 Attachment Summary:`);
-    console.log(`   Total attachments found: ${totalAttachments}`);
-    console.log(`   Google Drive files: ${driveFiles}`);
-    console.log(`   Chat attachments: ${totalAttachments - driveFiles}`);
-  }
+  displayExportSummary({
+    attachmentsProcessed: totalAttachmentsProcessed,
+    attachmentsSuccessful: totalAttachmentsSuccessful,
+    avatarsProcessed: totalAvatarsProcessed,
+    avatarsSuccessful: totalAvatarsSuccessful,
+    driveFiles: totalDriveFiles,
+    logger,
+    logPath,
+    isDryRun: dryRun,
+  });
 }

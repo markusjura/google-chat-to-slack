@@ -60,7 +60,7 @@ Use the following technologies:
 │
 ├── package.json
 ├── pnpm-lock.yaml
-��── tsconfig.json                   # TypeScript configuration
+├── tsconfig.json                   # TypeScript configuration
 ├── vitest.config.ts                # Vitest configuration
 └── README.md
 ```
@@ -360,12 +360,7 @@ try {
 
 To test our script use `pnpm start`, followed by the command and service you want to test, e.g.
 
-```bash
-pnpm start export google-chat
-```
-
-To execute dry run use `--dry-run`, e.g.
-
-```bash
-pnpm start export google-chat --dry-run
-```
+* `pnpm start export google-chat --space competition` for testing export command end-to-end
+* `pnpm start export google-chat --space competition --dry-run` for testing export command dry run
+* `pnpm start transform` for testing transform command end-to-end
+* `pnpm start import --space competition` for testing import command end-to-end

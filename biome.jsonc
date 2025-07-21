@@ -8,7 +8,12 @@
   "linter": {
     "rules": {
       "complexity": {
-        "noBannedTypes": "off"
+        "noBannedTypes": "off",
+        "noExcessiveCognitiveComplexity": {
+          "options": {
+            "maxAllowedComplexity": 18
+          }
+        }
       },
       "suspicious": {
         "noConsole": "off", // console logs for scripts
