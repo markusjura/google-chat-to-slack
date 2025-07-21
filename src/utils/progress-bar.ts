@@ -1,45 +1,36 @@
+import { Presets, SingleBar } from 'cli-progress';
+
 export class ProgressBar {
-  private total: number;
-  private current = 0;
-  private label: string;
-  private width = 40;
+  private bar: SingleBar;
 
   constructor(total: number, label = 'Progress') {
-    this.total = total;
-    this.label = label;
+    this.bar = new SingleBar(
+      {
+        format: `${label}: [{bar}] {percentage}% | {value}/{total}`,
+        barCompleteChar: '█',
+        barIncompleteChar: '░',
+        hideCursor: true,
+        stopOnComplete: true,
+      },
+      Presets.rect
+    );
+
+    this.bar.start(total, 0);
   }
 
   update(current: number): void {
-    this.current = current;
-    this.render();
+    this.bar.update(current);
   }
 
   increment(): void {
-    this.current++;
-    this.render();
+    this.bar.increment();
   }
 
   safeIncrement(): void {
-    // Thread-safe increment for concurrent operations
-    this.current = Math.min(this.current + 1, this.total);
-    this.render();
+    this.bar.increment();
   }
 
   finish(): void {
-    this.current = this.total;
-    this.render();
-    process.stdout.write('\n');
-  }
-
-  private render(): void {
-    const percentage = Math.round((this.current / this.total) * 100);
-    const filled = Math.round((this.current / this.total) * this.width);
-    const empty = this.width - filled;
-
-    const progressBar = '█'.repeat(filled) + '░'.repeat(empty);
-    const progressText = `${this.label}: [${progressBar}] ${this.current}/${this.total} (${percentage}%)`;
-
-    // Clear line and write progress
-    process.stdout.write(`\r${progressText}`);
+    this.bar.stop();
   }
 }
