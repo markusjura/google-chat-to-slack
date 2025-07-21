@@ -5,7 +5,6 @@
 - Use functional and declarative programming patterns; avoid classes
 - Prefer iteration and modularization over code duplication
 - Use descriptive variable names with auxiliary verbs (e.g., isLoading, hasError)
-- When retrieving information or documentation on our technologies/libraries, use context7 (mcp server)
 
 # Tech Stack
 
@@ -356,7 +355,9 @@ try {
   console.log(e);
 }
 
-# Script Commands
+# Commands
+
+## CLI
 
 To test our script use `pnpm start`, followed by the command and service you want to test, e.g.
 
@@ -364,3 +365,13 @@ To test our script use `pnpm start`, followed by the command and service you wan
 * `pnpm start export google-chat --space competition --dry-run` for testing export command dry run
 * `pnpm start transform` for testing transform command end-to-end
 * `pnpm start import --space competition` for testing import command end-to-end
+
+## Checkpointing
+
+* Use claudepoint MCP server for checkpointing
+* Create a checkpoint after each user message submit and you will start applying changes to the code
+* When I tell you to revert to a previous version, revert to this checkpoint
+
+## Browser Testing
+
+* Use playwright mcp to open a browser when verifying or testing UI topice

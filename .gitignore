@@ -32,3 +32,6 @@ data
 
 # claude code
 .claude/settings.local.json
+
+# ClaudPoint checkpoint system
+.checkpoints/
