@@ -65,7 +65,7 @@ export class RateLimiter {
   }
 
   /**
-   * Check if an error is a rate limit error (429 status)
+   * Check if an error is a rate limit error (429 status or quota exceeded)
    */
   private isRateLimitError(error: unknown): boolean {
     // Handle Google API GaxiosError
@@ -78,6 +78,15 @@ export class RateLimiter {
     if (error && typeof error === 'object' && 'status' in error) {
       const httpError = error as { status?: number };
       return httpError.status === 429;
+    }
+
+    // Handle Google API quota exceeded errors
+    if (error instanceof Error && error.message) {
+      return (
+        error.message.includes('Quota exceeded') ||
+        error.message.includes('quota metric') ||
+        error.message.includes('Critical read requests')
+      );
     }
 
     return false;
@@ -163,4 +172,12 @@ export const googleChatSpaceRateLimiter = new RateLimiter({
   retryDelayMs: 1000,
   maxRetries: 5,
   exponentialBackoffBase: 2,
+});
+
+// People API has much stricter rate limits for contact/profile reads
+export const googlePeopleApiRateLimiter = new RateLimiter({
+  maxRequestsPerMinute: 80, // Well under 90 to provide buffer
+  retryDelayMs: 2000, // Longer retry delay
+  maxRetries: 3,
+  exponentialBackoffBase: 3, // More aggressive backoff
 });

@@ -17,8 +17,12 @@ import type {
 } from '../types/google-chat';
 import { Logger } from '../utils/logger';
 import { ProgressBar } from '../utils/progress-bar';
-import { googleChatProjectRateLimiter } from '../utils/rate-limiter';
+import {
+  googleChatProjectRateLimiter,
+  googlePeopleApiRateLimiter,
+} from '../utils/rate-limiter';
 import { getToken, setToken } from '../utils/token-manager';
+import { userCache } from '../utils/user-cache';
 
 const REDIRECT_URI = 'http://localhost:3000';
 const USER_ID_REGEX = /^(users\/|people\/)/;
@@ -114,44 +118,88 @@ async function getGoogleChatClient(): Promise<chat_v1.Chat> {
   });
 }
 
-function getUser(userId: string, logger: Logger): Promise<User | null> {
-  return googleChatProjectRateLimiter.execute(async () => {
+function handleUserFetchError(
+  error: unknown,
+  userId: string,
+  logger: Logger
+): undefined {
+  const gaxiosError = error as GaxiosError;
+
+  if (gaxiosError.response?.status === 404) {
+    logger.addWarning('user_fetch', userId, 'User not found');
+    userCache.set(userId, undefined);
+    return;
+  }
+
+  if (gaxiosError.response?.status === 403) {
+    logger.addPermissionWarning('user_fetch', userId, 'user profile');
+    userCache.set(userId, undefined);
+    return;
+  }
+
+  const errorMessage = error instanceof Error ? error.message : String(error);
+
+  if (
+    errorMessage.includes('Quota exceeded') ||
+    errorMessage.includes('quota metric')
+  ) {
+    logger.addError('user_fetch', userId, `Quota exceeded: ${errorMessage}`);
+  } else {
+    logger.addError('user_fetch', userId, errorMessage);
+  }
+
+  userCache.set(userId, undefined, true); // Mark as error attempt
+  return;
+}
+
+async function fetchUserFromPeopleApi(
+  userId: string
+): Promise<User | undefined> {
+  const oAuth2Client = await getAuthenticatedOauth2Client();
+  const people = google.people({ version: 'v1', auth: oAuth2Client });
+  const res = await people.people.get({
+    resourceName: `people/${userId.replace('users/', '')}`,
+    personFields: 'names,emailAddresses,photos',
+  });
+
+  const user = res.data;
+  if (!user) {
+    return;
+  }
+
+  return {
+    name: user.resourceName ?? '',
+    displayName: user.names?.[0]?.displayName ?? '',
+    email: user.emailAddresses?.[0]?.value ?? '',
+    avatarUrl: user.photos?.[0]?.url ?? '',
+    type: 'HUMAN' as const,
+  };
+}
+
+function getUser(userId: string, logger: Logger): Promise<User | undefined> {
+  // Check cache first
+  const cachedUser = userCache.get(userId);
+  if (cachedUser !== undefined) {
+    return Promise.resolve(cachedUser);
+  }
+
+  // Skip if too many failed attempts
+  if (userCache.shouldSkip(userId)) {
+    logger.addWarning(
+      'user_fetch',
+      userId,
+      'Skipping user due to repeated failures'
+    );
+    return Promise.resolve(undefined);
+  }
+
+  return googlePeopleApiRateLimiter.execute(async () => {
     try {
-      const oAuth2Client = await getAuthenticatedOauth2Client();
-      const people = google.people({ version: 'v1', auth: oAuth2Client });
-      const res = await people.people.get({
-        resourceName: `people/${userId.replace('users/', '')}`,
-        personFields: 'names,emailAddresses,photos',
-      });
-
-      const user = res.data;
-      if (!user) {
-        return null;
-      }
-
-      return {
-        name: user.resourceName ?? '',
-        displayName: user.names?.[0]?.displayName ?? '',
-        email: user.emailAddresses?.[0]?.value ?? '',
-        avatarUrl: user.photos?.[0]?.url ?? '',
-        type: 'HUMAN',
-      };
+      const result = await fetchUserFromPeopleApi(userId);
+      userCache.set(userId, result);
+      return result;
     } catch (error) {
-      const gaxiosError = error as GaxiosError;
-      if (gaxiosError.response?.status === 404) {
-        logger.addWarning('user_fetch', userId, 'User not found');
-        return null;
-      }
-      if (gaxiosError.response?.status === 403) {
-        logger.addPermissionWarning('user_fetch', userId, 'user profile');
-        return null;
-      }
-      logger.addError(
-        'user_fetch',
-        userId,
-        error instanceof Error ? error.message : String(error)
-      );
-      return null;
+      return handleUserFetchError(error, userId, logger);
     }
   });
 }
@@ -889,6 +937,13 @@ export async function exportGoogleChatData(
   const logPrefix = dryRun ? '[Dry Run] ' : '';
   const logger = new Logger();
 
+  // Clear user cache at start
+  userCache.clear();
+  console.log(
+    '🔄 Rate limiting: Google People API requests limited to 80/minute with enhanced quota detection'
+  );
+  console.log('💾 User caching: Enabled to prevent redundant API calls');
+
   const allSpaces = await listSpaces();
   let targetSpaces = spaceName
     ? allSpaces.filter((s) => s.displayName === spaceName)
@@ -978,6 +1033,9 @@ export async function exportGoogleChatData(
           ).length;
         }
 
+        // Clean up cache periodically to manage memory
+        userCache.cleanup();
+
         return {
           ...space,
           messages,
@@ -1012,4 +1070,13 @@ export async function exportGoogleChatData(
     logPath,
     isDryRun: dryRun,
   });
+
+  // Display user cache statistics
+  const cacheStats = userCache.getStats();
+  if (cacheStats.size > 0) {
+    console.log(`User cache: ${cacheStats.size} users cached`);
+  }
+
+  // Clean up user cache
+  userCache.cleanup();
 }
