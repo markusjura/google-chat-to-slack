@@ -2,7 +2,11 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 export type LogLevel = 'error' | 'warning';
-export type LogType = 'attachment_download' | 'user_fetch' | 'avatar_download';
+export type LogType =
+  | 'attachment_download'
+  | 'user_fetch'
+  | 'avatar_download'
+  | 'file_copy';
 
 export interface LogEntry {
   timestamp: string;
@@ -92,6 +96,7 @@ export class Logger {
       attachment_download: 0,
       user_fetch: 0,
       avatar_download: 0,
+      file_copy: 0,
     };
 
     for (const entry of this.entries.filter((e) => e.level === 'error')) {
@@ -106,6 +111,7 @@ export class Logger {
       attachment_download: 0,
       user_fetch: 0,
       avatar_download: 0,
+      file_copy: 0,
     };
 
     for (const entry of this.entries.filter((e) => e.level === 'warning')) {
@@ -115,13 +121,21 @@ export class Logger {
     return counts;
   }
 
-  async writeLog(outputDir: string): Promise<string> {
+  async writeLog(baseDir?: string): Promise<string> {
     if (!this.hasIssues()) {
       return '';
     }
 
-    const logPath = path.join(outputDir, 'output.log');
+    // Use centralized logs directory
+    const logsDir = baseDir
+      ? path.join(baseDir, 'data', 'logs')
+      : path.resolve('data/logs');
+    const logPath = path.join(logsDir, 'output.log');
     const logContent = this.formatLog();
+
+    // Ensure logs directory exists
+    const { mkdir } = require('node:fs/promises');
+    await mkdir(logsDir, { recursive: true });
 
     await writeFile(logPath, logContent, 'utf-8');
     return logPath;

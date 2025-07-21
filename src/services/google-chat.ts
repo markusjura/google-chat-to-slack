@@ -996,10 +996,10 @@ export async function exportGoogleChatData(
   await writeFile(outputPath, JSON.stringify(exportData, null, 2));
   console.log(`${logPrefix}Exported data to ${outputPath}`);
 
-  // Write error log if there are errors
+  // Write error log if there are errors or warnings
   let logPath = '';
-  if (logger.hasErrors() && !dryRun) {
-    logPath = await logger.writeLog(outputDir);
+  if (logger.hasIssues() && !dryRun) {
+    logPath = await logger.writeLog();
   }
 
   displayExportSummary({

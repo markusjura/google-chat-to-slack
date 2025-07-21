@@ -9,6 +9,7 @@ import type {
   SlackImportMessage,
   UserMapping,
 } from '../types/slack';
+import { Logger } from '../utils/logger';
 
 interface TransformOptions {
   dryRun?: boolean;
@@ -37,6 +38,7 @@ export async function transformGoogleChatToSlack(
 ): Promise<void> {
   const { dryRun = false } = options;
   const stats = initializeStats();
+  const logger = new Logger();
 
   console.log(
     `${dryRun ? '[Dry Run] ' : ''}Transforming Google Chat export to Slack format...`
@@ -52,10 +54,17 @@ export async function transformGoogleChatToSlack(
     inputDir,
     outputDir,
     dryRun,
-    stats
+    stats,
+    logger
   );
 
-  stats.avatars = await processAvatars(inputDir, outputDir, users, dryRun);
+  stats.avatars = await processAvatars(
+    inputDir,
+    outputDir,
+    users,
+    dryRun,
+    logger
+  );
 
   const slackImportData = createSlackImportData(
     exportData.export_timestamp,
@@ -65,7 +74,7 @@ export async function transformGoogleChatToSlack(
   );
 
   await writeOutput(slackImportData, outputDir, dryRun);
-  printStatistics(stats);
+  await displayTransformationSummary(stats, logger, dryRun);
 }
 
 function initializeStats(): TransformStats {
@@ -98,7 +107,8 @@ async function processChannels(
   inputDir: string,
   outputDir: string,
   dryRun: boolean,
-  stats: TransformStats
+  stats: TransformStats,
+  logger: Logger
 ) {
   const channels: SlackImportChannel[] = [];
   const channelMappings: ChannelMapping[] = [];
@@ -111,7 +121,8 @@ async function processChannels(
         userMappings,
         inputDir,
         outputDir,
-        dryRun
+        dryRun,
+        logger
       );
       return { channelMapping, slackChannel };
     })
@@ -147,12 +158,13 @@ async function processAvatars(
   inputDir: string,
   outputDir: string,
   users: User[],
-  dryRun: boolean
+  dryRun: boolean,
+  logger: Logger
 ): Promise<number> {
   if (dryRun) {
     return users.filter((u) => u.avatarUrl).length;
   }
-  return await copyAvatarFiles(inputDir, outputDir, users);
+  return await copyAvatarFiles(inputDir, outputDir, users, logger);
 }
 
 function createSlackImportData(
@@ -187,16 +199,58 @@ async function writeOutput(
   }
 }
 
-function printStatistics(stats: TransformStats): void {
-  console.log('\n📊 Transformation Statistics:');
-  console.log(`Channels: ${stats.channels}`);
-  console.log(`Messages: ${stats.messages}`);
-  console.log(`Users: ${stats.users}`);
-  console.log(`Attachments: ${stats.attachments}`);
-  console.log(`Avatars: ${stats.avatars}`);
-  console.log(`Threaded messages: ${stats.threads}`);
-  console.log(`Reactions: ${stats.reactions}`);
-  console.log(`User mentions: ${stats.mentions}`);
+async function displayTransformationSummary(
+  stats: TransformStats,
+  logger: Logger,
+  isDryRun: boolean
+): Promise<void> {
+  console.log('\n📊 Transformation Summary:');
+  console.log(`   Channels: ${stats.channels} converted`);
+  console.log(`   Messages: ${stats.messages} processed`);
+  console.log(`   Users: ${stats.users} mapped`);
+
+  if (stats.attachments > 0) {
+    console.log(`   Attachments: ${stats.attachments} processed`);
+  }
+
+  if (stats.avatars > 0) {
+    console.log(`   Avatars: ${stats.avatars} processed`);
+  }
+
+  if (stats.threads > 0) {
+    console.log(`   • Threaded messages: ${stats.threads}`);
+  }
+
+  if (stats.reactions > 0) {
+    console.log(`   • Reactions: ${stats.reactions}`);
+  }
+
+  if (stats.mentions > 0) {
+    console.log(`   • User mentions: ${stats.mentions}`);
+  }
+
+  const errorCount = logger.getErrorCount();
+  const warningCount = logger.getWarningCount();
+
+  if (errorCount > 0 || warningCount > 0) {
+    console.log('');
+    if (errorCount > 0) {
+      console.log(`🚨 ${errorCount} error(s) occurred during transformation`);
+    }
+    if (warningCount > 0) {
+      console.log(
+        `⚠️  ${warningCount} warning(s) occurred during transformation`
+      );
+    }
+
+    let logPath = '';
+    if (logger.hasIssues() && !isDryRun) {
+      logPath = await logger.writeLog();
+      console.log(`   Details: ${logPath}`);
+    }
+  } else if (!isDryRun) {
+    console.log(`\n✅ Transformation completed successfully with no issues`);
+  }
 }
 
 function extractUniqueUsers(
@@ -300,7 +354,8 @@ async function transformChannel(
   userMappings: UserMapping[],
   inputDir: string,
   outputDir: string,
-  dryRun: boolean
+  dryRun: boolean,
+  logger: Logger
 ): Promise<SlackImportChannel> {
   const sortedMessages = sortMessagesByTime(space.messages);
   const threadMap = new Map<string, string>();
@@ -311,7 +366,8 @@ async function transformChannel(
     inputDir,
     outputDir,
     dryRun,
-    threadMap
+    threadMap,
+    logger
   );
 
   return createSlackChannel(space, slackMessages);
@@ -330,7 +386,8 @@ async function transformMessages(
   inputDir: string,
   outputDir: string,
   dryRun: boolean,
-  threadMap: Map<string, string>
+  threadMap: Map<string, string>,
+  logger: Logger
 ): Promise<SlackImportMessage[]> {
   const messagePromises = messages.map((message) => {
     return transformSingleMessage(
@@ -339,7 +396,8 @@ async function transformMessages(
       inputDir,
       outputDir,
       dryRun,
-      threadMap
+      threadMap,
+      logger
     );
   });
 
@@ -353,7 +411,8 @@ async function transformSingleMessage(
   inputDir: string,
   outputDir: string,
   dryRun: boolean,
-  threadMap: Map<string, string>
+  threadMap: Map<string, string>,
+  logger: Logger
 ): Promise<SlackImportMessage | null> {
   const userEmail = getUserEmail(message.sender, userMappings);
   if (!userEmail) {
@@ -367,7 +426,8 @@ async function transformSingleMessage(
       message.attachments || message.attachment || [],
       inputDir,
       outputDir,
-      dryRun
+      dryRun,
+      logger
     ),
     Promise.resolve(transformReactions(message.emojiReactionSummaries || [])),
     Promise.resolve(transformMentions(message.annotations || [], userMappings)),
@@ -442,12 +502,11 @@ async function transformAttachments(
   googleAttachments: any[],
   inputDir: string,
   outputDir: string,
-  dryRun: boolean
+  dryRun: boolean,
+  logger: Logger
 ): Promise<SlackImportAttachment[]> {
   const validAttachments = googleAttachments.filter(
-    (attachment) =>
-      (attachment.localFilePath || attachment.contentName) &&
-      attachment.contentType
+    (attachment) => attachment.localFilePath && attachment.contentType
   );
 
   if (!dryRun && validAttachments.length > 0) {
@@ -456,10 +515,8 @@ async function transformAttachments(
   }
 
   const attachmentPromises = validAttachments.map(async (attachment) => {
-    // Use localFilePath if available, fallback to contentName for backward compatibility
-    const sourceFileName = attachment.localFilePath
-      ? path.basename(attachment.localFilePath)
-      : attachment.contentName;
+    // Only process attachments that were successfully downloaded (have localFilePath)
+    const sourceFileName = path.basename(attachment.localFilePath);
 
     const sourceFile = path.join(inputDir, 'attachments', sourceFileName);
     const destFile = path.join(outputDir, 'attachments', sourceFileName);
@@ -467,8 +524,14 @@ async function transformAttachments(
     if (!dryRun) {
       try {
         await copyFile(sourceFile, destFile);
-      } catch {
-        console.warn(`Could not copy attachment: ${sourceFileName}`);
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logger.addError(
+          'file_copy',
+          sourceFileName,
+          `Failed to copy attachment: ${errorMessage}`
+        );
         return null;
       }
     }
@@ -523,7 +586,8 @@ function transformMentions(
 async function copyAvatarFiles(
   inputDir: string,
   outputDir: string,
-  users: User[]
+  users: User[],
+  logger: Logger
 ): Promise<number> {
   const avatarsInputDir = path.join(inputDir, 'avatars');
   const avatarsOutputDir = path.join(outputDir, 'avatars');
@@ -540,9 +604,14 @@ async function copyAvatarFiles(
 
       await copyFile(sourceFile, destFile);
       return true;
-    } catch {
-      console.warn(
-        `Could not copy avatar for user: ${user.displayName || user.email}`
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const userIdentifier = user.displayName || user.email || 'unknown';
+      logger.addError(
+        'file_copy',
+        userIdentifier,
+        `Failed to copy avatar: ${errorMessage}`
       );
       return false;
     }
