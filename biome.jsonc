@@ -10,6 +10,7 @@
       "complexity": {
         "noBannedTypes": "off",
         "noExcessiveCognitiveComplexity": {
+          "level": "error",
           "options": {
             "maxAllowedComplexity": 18
           }
