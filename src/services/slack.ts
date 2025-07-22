@@ -216,9 +216,9 @@ async function postSlackMessage(
     let messageText: string;
 
     if (message.text.trim()) {
-      messageText = `*${senderName}* – _${timestamp}_\n\n${message.text}`;
+      messageText = `*${senderName}* at _${timestamp}_\n\n${message.text}`;
     } else {
-      messageText = `*${senderName}* – _${timestamp}_\n\n_[No text content]_`;
+      messageText = `*${senderName}* at _${timestamp}_\n\n_[No text content]_`;
     }
 
     // Post message - create properly typed arguments
