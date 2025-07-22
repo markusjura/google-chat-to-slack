@@ -68,10 +68,42 @@ Each command is implemented as a separate module in `src/cli/commands/`:
 
 ### Testing Strategy
 
-- Unit tests that tests a CLI command end-toend while mocking external sources
-- In addition, unit tests for important or complex business logic and utilities
-- Use `vi.mock` for dependency isolation
-- In addition, you can run the CLI commands manually for verification. Use dry-run modes for safe testing against live APIs.
+**Architecture: CLI Command-Level End-to-End Testing**
+- Test at the CLI command level for comprehensive coverage that matches real user workflows
+- Mock external services only (Google/Slack APIs), allowing internal service integration to run end-to-end
+- Use realistic test scenarios based on actual CLI command combinations
+
+**Test Structure (`src/__tests__/`):**
+```
+├── commands/          # CLI command integration tests
+│   ├── export.test.ts      # export google-chat [--space X] [--dry-run]
+│   ├── import.test.ts      # import [--space X] [--dry-run]  
+│   ├── transform.test.ts   # transform [--dry-run]
+│   ├── login.test.ts       # login google-chat/slack
+│   └── logout.test.ts      # logout google-chat/slack
+├── utils/             # Complex business logic unit tests
+│   ├── rate-limiter.test.ts    # Rate limiting algorithms
+│   ├── user-cache.test.ts      # Caching and cleanup logic
+│   └── token-manager.test.ts   # OS keyring integration
+├── fixtures/          # Realistic mock data
+│   ├── google-chat-api.ts  # Mock API responses
+│   ├── slack-api.ts        # Mock Slack responses
+│   └── file-system.ts      # Mock file operations
+└── helpers/
+    └── test-utils.ts       # Test utilities
+```
+
+**Key Test Scenarios:**
+- **Export**: Full export, dry-run, specific space filtering, error handling
+- **Transform**: Data conversion, user mapping, attachment processing
+- **Import**: Full import, target channel, dry-run connection test
+- **Utils**: Rate limiting algorithms, cache management, token operations
+
+**Mocking Strategy:**
+- ✅ Mock: External APIs (Google Chat, Slack), file system, HTTP requests, OS keyring
+- ❌ Don't Mock: Internal services, data transformation, CLI parsing, business logic
+
+Use `vi.mock` for dependency isolation. Manual CLI testing available via dry-run modes.
 
 ## Commands
 
@@ -90,13 +122,10 @@ pnpm start import --space target-channel  # Import to Slack
 
 ```bash
 # Code quality
-pnpm lint                    # Check code with Ultracite
-pnpm format                  # Auto-fix formatting issues
-pnpm typecheck               # TypeScript compilation check
-pnpm check                   # Format + lint + typecheck combined
+pnpm check                                        # Format + lint + typecheck combined
 
 # Testing
-pnpm test                                         # Run Vitest unit tests
+pnpm test --run                                   # Run Vitest unit tests
 pnpm start export google-chat --space competition # Test full export with minimal data
 pnpm start export google-chat --dry-run           # Test export with minimal data
 pnpm start transform                              # Test transformation
@@ -135,7 +164,7 @@ pnpm start import --dry-run                       # Test Slack API connectivity
 ## Checkpointing
 
 - Use claudepoint MCP server for code checkpointing
-- Create checkpoints before major code changes
+- Create checkpoints before major code changes__
 - Revert to checkpoints when requested by user
 
 ## Browser Testing
