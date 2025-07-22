@@ -1,1 +1,1 @@
-pnpm exec ultracite format
+pnpm check
