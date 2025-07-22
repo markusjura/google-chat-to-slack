@@ -6,11 +6,13 @@ export class ProgressBar {
   constructor(total: number, label = 'Progress') {
     this.bar = new SingleBar(
       {
-        format: `${label}: [{bar}] {percentage}% | {value}/{total}`,
+        format: `${label}: [{bar}] {value}/{total}`,
         barCompleteChar: '█',
         barIncompleteChar: '░',
         hideCursor: true,
         stopOnComplete: true,
+        clearOnComplete: true,
+        forceRedraw: true,
       },
       Presets.rect
     );
@@ -32,5 +34,7 @@ export class ProgressBar {
 
   finish(): void {
     this.bar.stop();
+    // Ensure clean terminal state after progress bar
+    process.stdout.write('\n');
   }
 }

@@ -80,12 +80,19 @@ export class RateLimiter {
       return httpError.status === 429;
     }
 
+    // Handle Slack API WebAPIHTTPError
+    if (error && typeof error === 'object' && 'code' in error) {
+      const slackError = error as { code?: string };
+      return slackError.code === 'slack_webapi_rate_limited';
+    }
+
     // Handle Google API quota exceeded errors
     if (error instanceof Error && error.message) {
       return (
         error.message.includes('Quota exceeded') ||
         error.message.includes('quota metric') ||
-        error.message.includes('Critical read requests')
+        error.message.includes('Critical read requests') ||
+        error.message.includes('rate_limited')
       );
     }
 
@@ -180,4 +187,20 @@ export const googlePeopleApiRateLimiter = new RateLimiter({
   retryDelayMs: 2000, // Longer retry delay
   maxRetries: 3,
   exponentialBackoffBase: 3, // More aggressive backoff
+});
+
+// Slack API Tier 3 rate limiter (reactions.add, reactions.get, etc.)
+export const slackTier3RateLimiter = new RateLimiter({
+  maxRequestsPerMinute: 120, // Under 50 to provide buffer
+  retryDelayMs: 1000,
+  maxRetries: 3,
+  exponentialBackoffBase: 2,
+});
+
+// Slack chat.postMessage rate limiter (Tier 2: ~1 message per second per channel)
+export const slackChatRateLimiter = new RateLimiter({
+  maxRequestsPerMinute: 60, // 1 message per second with buffer
+  retryDelayMs: 1000,
+  maxRetries: 3,
+  exponentialBackoffBase: 2,
 });

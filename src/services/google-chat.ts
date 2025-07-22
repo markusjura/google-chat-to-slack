@@ -138,11 +138,10 @@ async function fetchUserWithDirectoryAPI(
     // Remove 'users/' prefix to get the numeric ID
     const userKey = userId.replace(USERS_PREFIX_REGEX, '');
 
-    const result = await googlePeopleApiRateLimiter.execute(async () => {
-      return await admin.users.get({
-        userKey,
-        // Remove viewType since we're using admin privileges
-      });
+    // Note: Rate limiting now handled by caller
+    const result = await admin.users.get({
+      userKey,
+      // Remove viewType since we're using admin privileges
     });
 
     const user = result.data;
@@ -218,15 +217,23 @@ async function batchFetchUserNames(
     `🔍 Fetching names for ${uncachedUserIds.length} unique users via Directory API...`
   );
 
-  // Process uncached users using Directory API only
-  for (const userId of uncachedUserIds) {
-    // biome-ignore lint/nursery/noAwaitInLoop: Sequential processing required for rate limiting
-    const fullName = await fetchUserWithDirectoryAPI(userId, logger);
+  // Process uncached users concurrently using rate limiter
+  const userFetchPromises = uncachedUserIds.map((userId) =>
+    googlePeopleApiRateLimiter.execute(async () => {
+      const fullName = await fetchUserWithDirectoryAPI(userId, logger);
 
-    // Cache the result (even if undefined)
-    personNamesCache.set(userId, fullName);
+      // Cache the result (even if undefined)
+      personNamesCache.set(userId, fullName);
 
-    // Store in peoples data if found
+      // Return result for aggregation
+      return { userId, fullName };
+    })
+  );
+
+  const userResults = await Promise.all(userFetchPromises);
+
+  // Aggregate results into peoplesData
+  for (const { userId, fullName } of userResults) {
     if (fullName) {
       peoplesData[userId] = fullName;
     }
@@ -772,21 +779,19 @@ async function getSpaceOverviews(
   dryRun: boolean,
   messageLimit?: number
 ): Promise<SpaceOverview[]> {
-  const overviews: SpaceOverview[] = [];
-
-  for (const space of targetSpaces) {
+  // Process spaces concurrently with Promise.all - rate limiting handled by listMessages
+  const overviewPromises = targetSpaces.map(async (space) => {
     const fetchLimit = dryRun ? (messageLimit ?? 1) : undefined;
-    // biome-ignore lint/nursery/noAwaitInLoop: Sequential space processing is required for rate limiting and progress tracking
     const messages = await listMessages(space.name, fetchLimit);
 
-    overviews.push({
+    return {
       space,
       messageCount: messages.length,
       messages,
-    });
-  }
+    };
+  });
 
-  return overviews;
+  return await Promise.all(overviewPromises);
 }
 
 function displayExportOverview(

@@ -3,16 +3,16 @@ import path from 'node:path';
 import type { CommandModule } from 'yargs';
 import { transformGoogleChatToSlack } from '../../services/transformation';
 
-function getExportDirectory(): string | null {
+function getExportDirectory(): string | undefined {
   const exportDir = path.resolve('data/export');
   const fs = require('node:fs');
 
   try {
     return fs.existsSync(exportDir) && fs.statSync(exportDir).isDirectory()
       ? exportDir
-      : null;
+      : undefined;
   } catch {
-    return null;
+    return;
   }
 }
 

@@ -2,22 +2,22 @@ import path from 'node:path';
 import type { CommandModule } from 'yargs';
 import { importSlackData } from '../../services/slack';
 
-function getImportDirectory(): string | null {
+function getImportDirectory(): string | undefined {
   const importDir = path.resolve('data/import');
   const fs = require('node:fs');
 
   try {
     return fs.existsSync(importDir) && fs.statSync(importDir).isDirectory()
       ? importDir
-      : null;
+      : undefined;
   } catch {
-    return null;
+    return;
   }
 }
 
 type ImportArgs = {
   input?: string;
-  space?: string;
+  channel?: string;
   dryRun?: boolean;
 };
 
@@ -30,7 +30,7 @@ export const importCommand: CommandModule<object, ImportArgs> = {
         describe: 'Path to the import directory (defaults to latest import)',
         type: 'string',
       })
-      .option('space', {
+      .option('channel', {
         describe: 'Target Slack channel name for import',
         type: 'string',
       })
@@ -54,7 +54,7 @@ export const importCommand: CommandModule<object, ImportArgs> = {
     }
 
     try {
-      await importSlackData(inputDir, argv.space, {
+      await importSlackData(inputDir, argv.channel, {
         dryRun: argv.dryRun,
       });
     } catch (error) {

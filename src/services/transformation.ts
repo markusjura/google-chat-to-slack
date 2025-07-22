@@ -374,11 +374,11 @@ async function transformSingleMessage(
   dryRun: boolean,
   threadMap: Map<string, string>,
   logger: Logger
-): Promise<SlackImportMessage | null> {
+): Promise<SlackImportMessage | undefined> {
   // Get display name for this message
   const displayName = getDisplayName(message.sender, userMappings);
   if (!displayName || displayName === 'Unknown User') {
-    return null;
+    return;
   }
 
   const threadTs = getThreadTimestamp(message, threadMap);
@@ -481,7 +481,7 @@ async function transformAttachments(
           sourceFileName,
           `Failed to copy attachment: ${errorMessage}`
         );
-        return null;
+        return;
       }
     }
 
@@ -498,14 +498,55 @@ async function transformAttachments(
   return results.filter(Boolean) as SlackImportAttachment[];
 }
 
+function convertUnicodeEmojiToSlackName(unicodeEmoji: string): string {
+  // Common emoji mappings from Unicode to Slack shortcodes
+  const emojiMap: Record<string, string> = {
+    '👍': '+1',
+    '👎': '-1',
+    '💡': 'bulb',
+    '🙌': 'raised_hands',
+    '❤️': 'heart',
+    '😀': 'grinning',
+    '😂': 'joy',
+    '😍': 'heart_eyes',
+    '😢': 'cry',
+    '🔥': 'fire',
+    '✅': 'white_check_mark',
+    '❌': 'x',
+    '⭐': 'star',
+    '👏': 'clap',
+    '🎉': 'tada',
+    '🚀': 'rocket',
+    '💯': '100',
+    '🤔': 'thinking_face',
+    '😅': 'sweat_smile',
+    '😊': 'blush',
+    '👌': 'ok_hand',
+    '🙏': 'pray',
+    '💪': 'muscle',
+    '🎯': 'dart',
+    '📝': 'memo',
+    '⚡': 'zap',
+    '🎊': 'confetti_ball',
+  };
+
+  // Return mapped shortcode or try using the Unicode directly (some work)
+  return emojiMap[unicodeEmoji] || unicodeEmoji;
+}
+
 function transformReactions(
   googleReactions: any[]
 ): Array<{ name: string; count: number; users: string[] }> {
-  return googleReactions.map((reaction) => ({
-    name: reaction.emoji?.unicode || '👍',
-    count: reaction.reactionCount || 1,
-    users: [],
-  }));
+  return googleReactions.map((reaction) => {
+    const unicodeEmoji = reaction.emoji?.unicode || '👍';
+    const slackEmojiName = convertUnicodeEmojiToSlackName(unicodeEmoji);
+
+    return {
+      name: slackEmojiName,
+      count: reaction.reactionCount || 1,
+      users: [],
+    };
+  });
 }
 
 function transformMentions(

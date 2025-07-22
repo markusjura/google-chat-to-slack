@@ -8,7 +8,8 @@ export type LogType =
   | 'avatar_download'
   | 'file_copy'
   | 'file_upload'
-  | 'message_post';
+  | 'message_post'
+  | 'reaction_add';
 
 export interface LogEntry {
   timestamp: string;
@@ -106,6 +107,7 @@ export class Logger {
       file_copy: 0,
       file_upload: 0,
       message_post: 0,
+      reaction_add: 0,
     };
 
     for (const entry of this.entries.filter((e) => e.level === 'error')) {
@@ -123,6 +125,7 @@ export class Logger {
       file_copy: 0,
       file_upload: 0,
       message_post: 0,
+      reaction_add: 0,
     };
 
     for (const entry of this.entries.filter((e) => e.level === 'warning')) {

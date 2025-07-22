@@ -77,7 +77,7 @@ Each command is implemented as a separate module in `src/cli/commands/`:
 ```
 ├── commands/          # CLI command integration tests
 │   ├── export.test.ts      # export google-chat [--space X] [--dry-run]
-│   ├── import.test.ts      # import [--space X] [--dry-run]  
+│   ├── import.test.ts      # import [--channel X] [--dry-run]  
 │   ├── transform.test.ts   # transform [--dry-run]
 │   ├── login.test.ts       # login google-chat/slack
 │   └── logout.test.ts      # logout google-chat/slack
@@ -111,11 +111,11 @@ Use `vi.mock` for dependency isolation. Manual CLI testing available via dry-run
 
 ```bash
 # Complete migration workflow
-pnpm start login google-chat              # Authenticate with Google Chat
-pnpm start export google-chat --space X   # Export specific space
-pnpm start transform                      # Convert to Slack format
-pnpm start login slack                    # Setup Slack bot token
-pnpm start import --space target-channel  # Import to Slack
+pnpm start login google-chat                # Authenticate with Google Chat
+pnpm start export google-chat --space X     # Export specific space
+pnpm start transform                        # Convert to Slack format
+pnpm start login slack                      # Setup Slack bot token
+pnpm start import --channel target-channel  # Import to Slack
 ```
 
 ### Development Commands

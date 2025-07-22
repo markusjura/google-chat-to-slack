@@ -11,6 +11,10 @@ import type {
 } from '../types/slack';
 import { Logger } from '../utils/logger';
 import { ProgressBar } from '../utils/progress-bar';
+import {
+  slackChatRateLimiter,
+  slackTier3RateLimiter,
+} from '../utils/rate-limiter';
 import { getToken, setToken } from '../utils/token-manager';
 
 // Interface for message arguments to replace 'any' type
@@ -30,7 +34,7 @@ interface ImportOptions {
 
 async function testSlackToken(
   token: string
-): Promise<{ team?: string; user?: string; user_id?: string } | null> {
+): Promise<{ team?: string; user?: string; user_id?: string } | undefined> {
   try {
     const slack = new WebClient(token);
     const result = await slack.auth.test();
@@ -41,9 +45,9 @@ async function testSlackToken(
         user_id: result.user_id as string,
       };
     }
-    return null;
+    return;
   } catch {
-    return null;
+    return;
   }
 }
 
@@ -67,21 +71,19 @@ async function getSlackWebClient(): Promise<WebClient> {
 async function findSlackChannelByName(
   slack: WebClient,
   channelName: string
-): Promise<SlackChannel | null> {
+): Promise<SlackChannel | undefined> {
   try {
     const result = (await slack.conversations.list({
       types: 'public_channel,private_channel',
     })) as SlackConversationsListResponse;
 
     if (!(result.ok && result.channels)) {
-      return null;
+      return;
     }
 
-    return (
-      result.channels.find((channel) => channel.name === channelName) || null
-    );
+    return result.channels.find((channel) => channel.name === channelName);
   } catch {
-    return null;
+    return;
   }
 }
 
@@ -102,11 +104,52 @@ async function createSlackChannel(
   return result.channel as SlackChannel;
 }
 
+async function resolveChannelIdByName(
+  slack: WebClient,
+  name: string
+): Promise<string | undefined> {
+  // Try to get channel info by name to get the actual ID
+  try {
+    const channelInfo = await slack.conversations.info({ channel: name });
+    if (channelInfo.ok && channelInfo.channel?.id) {
+      return channelInfo.channel.id;
+    }
+  } catch {
+    // Fall through to next method
+  }
+
+  // Try alternative: search through conversations list with different parameters
+  try {
+    const conversationsList = await slack.conversations.list({
+      types: 'public_channel,private_channel',
+      limit: 1000, // Increase limit to find more channels
+    });
+
+    if (conversationsList.ok && conversationsList.channels) {
+      const foundChannel = conversationsList.channels.find(
+        (ch: any) => ch.name === name
+      );
+      if (foundChannel?.id) {
+        return foundChannel.id;
+      }
+    }
+  } catch {
+    // Channel resolution failed
+  }
+
+  return;
+}
+
 async function findOrCreateSlackChannel(
   slack: WebClient,
   name: string,
   isPrivate: boolean
 ): Promise<SlackChannel> {
+  // Check if 'name' is actually a Slack channel ID (starts with 'C')
+  if (name.startsWith('C')) {
+    return { id: name, name } as SlackChannel;
+  }
+
   // First try to find existing channel
   let channel = await findSlackChannelByName(slack, name);
 
@@ -120,10 +163,10 @@ async function findOrCreateSlackChannel(
         error.code === 'slack_webapi_platform_error' &&
         error.data?.error === 'name_taken'
       ) {
-        console.log(
-          `Channel #${name} already exists but couldn't be found in channel list. Continuing with import...`
-        );
-        // Return a minimal channel object with just the name - we'll use the name for posting
+        const resolvedId = await resolveChannelIdByName(slack, name);
+        if (resolvedId) {
+          return { id: resolvedId, name } as SlackChannel;
+        }
         return { id: name, name } as SlackChannel;
       }
       throw error;
@@ -137,7 +180,7 @@ async function uploadSlackAttachment(
   slack: WebClient,
   attachment: SlackImportAttachment,
   logger: Logger
-): Promise<string | null> {
+): Promise<string | undefined> {
   try {
     // Read file content
     const fileContent = await readFile(attachment.local_path);
@@ -187,7 +230,7 @@ async function uploadSlackAttachment(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.addError('file_upload', attachment.filename, errorMessage);
-    return null;
+    return;
   }
 }
 
@@ -196,7 +239,7 @@ async function postSlackMessage(
   channelId: string,
   message: SlackImportMessage,
   logger: Logger
-): Promise<string | null> {
+): Promise<string | undefined> {
   try {
     // Upload attachments first if any
     const fileIds: string[] = [];
@@ -240,11 +283,39 @@ async function postSlackMessage(
       throw new Error(`Failed to post message: ${result.error}`);
     }
 
-    return result.ts as string;
+    const messageTs = result.ts as string;
+
+    // Add reactions if any exist
+    if (message.reactions && message.reactions.length > 0) {
+      const reactionPromises = message.reactions.map((reaction) =>
+        slackTier3RateLimiter.execute(async () => {
+          try {
+            await slack.reactions.add({
+              channel: channelId,
+              timestamp: messageTs,
+              name: reaction.name,
+            });
+          } catch (error) {
+            // Log reaction errors but don't fail the entire message import
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            logger.addWarning(
+              'reaction_add',
+              `${reaction.name} on message`,
+              errorMessage
+            );
+          }
+        })
+      );
+
+      await Promise.all(reactionPromises);
+    }
+
+    return messageTs;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.addError('message_post', message.display_name, errorMessage);
-    return null;
+    return;
   }
 }
 
@@ -320,35 +391,51 @@ async function processChannel(
 
   const threadMap = new Map<string, string>(); // Map thread_ts to actual Slack ts
 
-  for (const message of sortedMessages) {
-    // Map thread timestamp if this is a reply
-    let threadTs: string | undefined;
-    if (message.thread_ts) {
-      threadTs = threadMap.get(message.thread_ts);
-      // Only use thread_ts if we have a valid Slack timestamp mapping
-      // If we don't have it mapped yet, this message will not be threaded
-    }
+  // Process messages with smart batching - balance concurrency with progress visibility
+  const BATCH_SIZE = 5; // Process 5 messages concurrently at a time
+  let processedCount = 0;
 
-    const messageWithThread = { ...message, thread_ts: threadTs };
-    // biome-ignore lint/nursery/noAwaitInLoop: Messages must be posted sequentially for rate limiting and thread ordering
-    const messageTs = await postSlackMessage(
-      slack,
-      channel.id,
-      messageWithThread,
-      logger
-    );
+  for (let i = 0; i < sortedMessages.length; i += BATCH_SIZE) {
+    const batch = sortedMessages.slice(i, i + BATCH_SIZE);
 
-    // If this is the first message in a thread, save the actual timestamp
-    if (messageTs && message.thread_ts && !threadMap.has(message.thread_ts)) {
-      threadMap.set(message.thread_ts, messageTs);
-    }
+    const batchPromises = batch.map((message) => {
+      // Map thread timestamp if this is a reply
+      let threadTs: string | undefined;
+      if (message.thread_ts) {
+        threadTs = threadMap.get(message.thread_ts);
+        // Only use thread_ts if we have a valid Slack timestamp mapping
+      }
 
-    progressBar.increment();
+      const messageWithThread = { ...message, thread_ts: threadTs };
 
-    // Rate limiting: 1 message per second per channel
-    if (sortedMessages.indexOf(message) < sortedMessages.length - 1) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
+      return slackChatRateLimiter.execute(async () => {
+        const messageTs = await postSlackMessage(
+          slack,
+          channel.id,
+          messageWithThread,
+          logger
+        );
+
+        // If this is the first message in a thread, save the actual timestamp
+        if (
+          messageTs &&
+          message.thread_ts &&
+          !threadMap.has(message.thread_ts)
+        ) {
+          threadMap.set(message.thread_ts, messageTs);
+        }
+
+        return messageTs;
+      });
+    });
+
+    // Wait for this batch to complete
+    // biome-ignore lint/nursery/noAwaitInLoop: Batching requires waiting for each batch to complete sequentially
+    await Promise.all(batchPromises);
+
+    // Update progress after each batch
+    processedCount += batch.length;
+    progressBar.update(processedCount);
   }
 
   progressBar.finish();
@@ -436,7 +523,8 @@ export async function loginToSlack(): Promise<void> {
   console.log('     - channels:read (View channels)');
   console.log('     - users:read (View users)');
   console.log('     - users:read.email (View user email addresses)');
-  console.log('     - channels:manage (Create channels)\n');
+  console.log('     - channels:manage (Create channels)');
+  console.log('     - reactions:write (Add emoji reactions)\n');
 
   console.log('3. Install the App:');
   console.log('   • Click "Install to Workspace" at the top');
