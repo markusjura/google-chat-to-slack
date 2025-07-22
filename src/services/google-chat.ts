@@ -10,6 +10,7 @@ import { type chat_v1, google } from 'googleapis';
 import open from 'open';
 import { config } from '../config';
 import type {
+  ExportData,
   GoogleAttachment,
   GoogleMessage,
   Space,
@@ -25,15 +26,17 @@ import { getToken, setToken } from '../utils/token-manager';
 import { userCache } from '../utils/user-cache';
 
 const REDIRECT_URI = 'http://localhost:3000';
-const USER_ID_REGEX = /^(users\/|people\/)/;
+const USERS_PREFIX_REGEX = /^users\//;
 
 const SCOPES = [
   'https://www.googleapis.com/auth/chat.spaces.readonly',
   'https://www.googleapis.com/auth/chat.messages.readonly',
   'https://www.googleapis.com/auth/chat.memberships.readonly',
   'https://www.googleapis.com/auth/drive.readonly',
-  'profile',
-  'email',
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'https://www.googleapis.com/auth/userinfo.email',
+  // Directory API for admin access to all user profiles
+  'https://www.googleapis.com/auth/admin.directory.user.readonly',
 ];
 
 function getOauth2Client(): OAuth2Client {
@@ -118,196 +121,124 @@ async function getGoogleChatClient(): Promise<chat_v1.Chat> {
   });
 }
 
-function handleUserFetchError(
-  error: unknown,
+// Cache for person full names
+const personNamesCache = new Map<string, string | undefined>();
+
+/**
+ * Fetches user profile using Directory API with admin privileges
+ */
+async function fetchUserWithDirectoryAPI(
   userId: string,
   logger: Logger
-): undefined {
-  const gaxiosError = error as GaxiosError;
+): Promise<string | undefined> {
+  try {
+    const oAuth2Client = await getAuthenticatedOauth2Client();
+    const admin = google.admin({ version: 'directory_v1', auth: oAuth2Client });
 
-  if (gaxiosError.response?.status === 404) {
-    logger.addWarning('user_fetch', userId, 'User not found');
-    userCache.set(userId, undefined);
-    return;
-  }
+    // Remove 'users/' prefix to get the numeric ID
+    const userKey = userId.replace(USERS_PREFIX_REGEX, '');
 
-  if (gaxiosError.response?.status === 403) {
-    logger.addPermissionWarning('user_fetch', userId, 'user profile');
-    userCache.set(userId, undefined);
-    return;
-  }
+    const result = await googlePeopleApiRateLimiter.execute(async () => {
+      return await admin.users.get({
+        userKey,
+        // Remove viewType since we're using admin privileges
+      });
+    });
 
-  const errorMessage = error instanceof Error ? error.message : String(error);
+    const user = result.data;
 
-  if (
-    errorMessage.includes('Quota exceeded') ||
-    errorMessage.includes('quota metric')
-  ) {
-    logger.addError('user_fetch', userId, `Quota exceeded: ${errorMessage}`);
-  } else {
-    logger.addError('user_fetch', userId, errorMessage);
-  }
+    // Try different name formats
+    if (user?.name?.fullName) {
+      return user.name.fullName;
+    }
 
-  userCache.set(userId, undefined, true); // Mark as error attempt
-  return;
-}
+    // Construct from parts if fullName not available
+    const givenName = user?.name?.givenName || '';
+    const familyName = user?.name?.familyName || '';
+    const fullName = `${givenName} ${familyName}`.trim();
 
-async function fetchUserFromPeopleApi(
-  userId: string
-): Promise<User | undefined> {
-  const oAuth2Client = await getAuthenticatedOauth2Client();
-  const people = google.people({ version: 'v1', auth: oAuth2Client });
-  const res = await people.people.get({
-    resourceName: `people/${userId.replace('users/', '')}`,
-    personFields: 'names,emailAddresses,photos',
-  });
+    if (fullName) {
+      return fullName;
+    }
 
-  const user = res.data;
-  if (!user) {
-    return;
-  }
+    // Last resort - use primaryEmail local part
+    if (user?.primaryEmail) {
+      const emailName = user.primaryEmail.split('@')[0];
+      return emailName;
+    }
 
-  return {
-    name: user.resourceName ?? '',
-    displayName: user.names?.[0]?.displayName ?? '',
-    email: user.emailAddresses?.[0]?.value ?? '',
-    avatarUrl: user.photos?.[0]?.url ?? '',
-    type: 'HUMAN' as const,
-  };
-}
-
-function getUser(userId: string, logger: Logger): Promise<User | undefined> {
-  // Check cache first
-  const cachedUser = userCache.get(userId);
-  if (cachedUser !== undefined) {
-    return Promise.resolve(cachedUser);
-  }
-
-  // Skip if too many failed attempts
-  if (userCache.shouldSkip(userId)) {
     logger.addWarning(
       'user_fetch',
       userId,
-      'Skipping user due to repeated failures'
+      'No name data found in Directory API'
     );
-    return Promise.resolve(undefined);
-  }
-
-  return googlePeopleApiRateLimiter.execute(async () => {
-    try {
-      const result = await fetchUserFromPeopleApi(userId);
-      userCache.set(userId, result);
-      return result;
-    } catch (error) {
-      return handleUserFetchError(error, userId, logger);
+  } catch (error) {
+    const gaxiosError = error as GaxiosError;
+    if (gaxiosError.response?.status === 403) {
+      logger.addPermissionWarning(
+        'user_fetch',
+        userId,
+        'Directory API access denied - check admin privileges and domain-wide delegation'
+      );
+    } else if (gaxiosError.response?.status === 404) {
+      logger.addWarning('user_fetch', userId, 'User not found in directory');
+    } else {
+      logger.addError(
+        'user_fetch',
+        userId,
+        `Directory API error: ${(error as Error).message}`
+      );
     }
-  });
+  }
 }
 
-function downloadFileFromUrl(
-  fileUrl: string,
-  outputPath: string,
-  logger: Logger,
-  identifier: string
-): Promise<boolean> {
-  return new Promise((resolve) => {
-    const file = createWriteStream(outputPath);
-    let _totalBytes = 0;
+/**
+ * Batch fetches user full names using Directory API (admin access)
+ */
+async function batchFetchUserNames(
+  userIds: string[],
+  logger: Logger
+): Promise<Record<string, string>> {
+  const peoplesData: Record<string, string> = {};
 
-    function handleRequest(requestUrl: string, redirectCount = 0): void {
-      if (redirectCount > 5) {
-        file.close();
-        unlink(outputPath, () => {
-          logger.addError('avatar_download', identifier, 'Too many redirects');
-          resolve(false);
-        });
-        return;
+  // Check cache first
+  const uncachedUserIds: string[] = [];
+  for (const userId of userIds) {
+    if (personNamesCache.has(userId)) {
+      const cachedName = personNamesCache.get(userId);
+      if (cachedName) {
+        peoplesData[userId] = cachedName;
       }
-
-      const protocol = requestUrl.startsWith('https:') ? https : http;
-
-      protocol
-        .get(requestUrl, (response) => {
-          // Handle redirects
-          if (
-            response.statusCode === 301 ||
-            response.statusCode === 302 ||
-            response.statusCode === 307 ||
-            response.statusCode === 308
-          ) {
-            const location = response.headers.location;
-            if (location) {
-              handleRequest(location, redirectCount + 1);
-              return;
-            }
-          }
-
-          if (response.statusCode !== 200) {
-            file.close();
-            unlink(outputPath, () => {
-              const statusCode = response.statusCode || 0;
-              if (statusCode === 403) {
-                logger.addPermissionWarning(
-                  'avatar_download',
-                  identifier,
-                  'avatar'
-                );
-              } else if (statusCode === 404) {
-                logger.addWarning(
-                  'avatar_download',
-                  identifier,
-                  'Avatar not found'
-                );
-              } else {
-                logger.addError(
-                  'avatar_download',
-                  identifier,
-                  `HTTP ${statusCode}: ${response.statusMessage || 'Unknown error'}`
-                );
-              }
-              resolve(false);
-            });
-            return;
-          }
-
-          response.on('data', (chunk) => {
-            _totalBytes += chunk.length;
-          });
-
-          response.pipe(file);
-
-          file.on('finish', () => {
-            file.close();
-            resolve(true);
-          });
-
-          file.on('error', (err) => {
-            file.close();
-            unlink(outputPath, () => {
-              logger.addError('avatar_download', identifier, err.message);
-              resolve(false);
-            });
-          });
-
-          response.on('error', (err) => {
-            file.close();
-            unlink(outputPath, () => {
-              logger.addError('avatar_download', identifier, err.message);
-              resolve(false);
-            });
-          });
-        })
-        .on('error', (err) => {
-          file.close();
-          unlink(outputPath, () => {
-            logger.addError('avatar_download', identifier, err.message);
-            resolve(false);
-          });
-        });
+    } else {
+      uncachedUserIds.push(userId);
     }
+  }
 
-    handleRequest(fileUrl);
-  });
+  console.log(
+    `🔍 Fetching names for ${uncachedUserIds.length} unique users via Directory API...`
+  );
+
+  // Process uncached users using Directory API only
+  for (const userId of uncachedUserIds) {
+    // biome-ignore lint/nursery/noAwaitInLoop: Sequential processing required for rate limiting
+    const fullName = await fetchUserWithDirectoryAPI(userId, logger);
+
+    // Cache the result (even if undefined)
+    personNamesCache.set(userId, fullName);
+
+    // Store in peoples data if found
+    if (fullName) {
+      peoplesData[userId] = fullName;
+    }
+  }
+
+  return peoplesData;
+}
+
+function getUser(userId: string): User {
+  return {
+    name: userId,
+  };
 }
 
 function downloadAttachment(
@@ -667,15 +598,11 @@ async function processAttachment(
 interface ProcessMessageResult {
   attachmentsProcessed: number;
   attachmentsSuccessful: number;
-  avatarsProcessed: number;
-  avatarsSuccessful: number;
 }
 
 interface ExportSummaryOptions {
   attachmentsProcessed: number;
   attachmentsSuccessful: number;
-  avatarsProcessed: number;
-  avatarsSuccessful: number;
   driveFiles: number;
   logger: Logger;
   logPath: string;
@@ -686,15 +613,13 @@ function displayExportSummary(options: ExportSummaryOptions): void {
   const {
     attachmentsProcessed,
     attachmentsSuccessful,
-    avatarsProcessed,
-    avatarsSuccessful,
     driveFiles,
     logger,
     logPath,
     isDryRun,
   } = options;
 
-  if (attachmentsProcessed === 0 && avatarsProcessed === 0) {
+  if (attachmentsProcessed === 0) {
     return;
   }
 
@@ -706,12 +631,6 @@ function displayExportSummary(options: ExportSummaryOptions): void {
     );
     console.log(`   • Google Drive files: ${driveFiles}`);
     console.log(`   • Chat attachments: ${attachmentsProcessed - driveFiles}`);
-  }
-
-  if (avatarsProcessed > 0) {
-    console.log(
-      `   Avatars: ${avatarsSuccessful}/${avatarsProcessed} downloaded successfully`
-    );
   }
 
   const errorCount = logger.getErrorCount();
@@ -733,47 +652,21 @@ function displayExportSummary(options: ExportSummaryOptions): void {
   }
 }
 
-async function processMessageSender(
+function processMessageSender(
   message: GoogleMessage,
-  avatarsDir: string,
-  isDryRun: boolean,
-  logger: Logger
-): Promise<{ processed: number; successful: number }> {
+  userIds: Set<string>
+): void {
   if (!message.sender) {
-    return { processed: 0, successful: 0 };
+    return;
   }
 
-  const user = await getUser(message.sender.name, logger);
-  if (!user?.avatarUrl) {
-    if (user) {
-      message.sender = user;
-    }
-    return { processed: 0, successful: 0 };
-  }
+  const userId = message.sender.name;
 
-  const avatarPath = path.join(
-    avatarsDir,
-    `${user.name.replace(USER_ID_REGEX, '')}.jpg`
-  );
+  // Set minimal user info for message structure
+  message.sender = getUser(userId);
 
-  if (isDryRun) {
-    user.avatarUrl = avatarPath;
-    message.sender = user;
-    return { processed: 1, successful: 1 };
-  }
-
-  const success = await downloadFileFromUrl(
-    user.avatarUrl,
-    avatarPath,
-    logger,
-    user.name.replace(USER_ID_REGEX, '')
-  );
-
-  if (success) {
-    user.avatarUrl = avatarPath;
-  }
-  message.sender = user;
-  return { processed: 1, successful: success ? 1 : 0 };
+  // Collect unique user ID for batch processing later
+  userIds.add(userId);
 }
 
 async function processMessageAttachments(
@@ -818,17 +711,13 @@ async function processMessageAttachments(
 
 async function processMessage(
   message: GoogleMessage,
-  avatarsDir: string,
   attachmentsDir: string,
   isDryRun: boolean,
-  logger: Logger
+  logger: Logger,
+  userIds: Set<string>
 ): Promise<ProcessMessageResult> {
-  const avatarResult = await processMessageSender(
-    message,
-    avatarsDir,
-    isDryRun,
-    logger
-  );
+  processMessageSender(message, userIds);
+
   const attachmentResult = await processMessageAttachments(
     message,
     attachmentsDir,
@@ -839,8 +728,6 @@ async function processMessage(
   return {
     attachmentsProcessed: attachmentResult.processed,
     attachmentsSuccessful: attachmentResult.successful,
-    avatarsProcessed: avatarResult.processed,
-    avatarsSuccessful: avatarResult.successful,
   };
 }
 
@@ -937,12 +824,16 @@ export async function exportGoogleChatData(
   const logPrefix = dryRun ? '[Dry Run] ' : '';
   const logger = new Logger();
 
-  // Clear user cache at start
+  // Clear caches at start
   userCache.clear();
+  personNamesCache.clear();
   console.log(
-    '🔄 Rate limiting: Google People API requests limited to 80/minute with enhanced quota detection'
+    '🔄 Rate limiting: Google People API and Chat API requests limited to prevent quota issues'
   );
   console.log('💾 User caching: Enabled to prevent redundant API calls');
+
+  // Collect unique user IDs for batch processing
+  const uniqueUserIds = new Set<string>();
 
   const allSpaces = await listSpaces();
   let targetSpaces = spaceName
@@ -962,9 +853,7 @@ export async function exportGoogleChatData(
   }
 
   const outputDir = path.dirname(outputPath);
-  const avatarsDir = path.join(outputDir, 'avatars');
   const attachmentsDir = path.join(outputDir, 'attachments');
-  await mkdir(avatarsDir, { recursive: true });
   await mkdir(attachmentsDir, { recursive: true });
 
   // Get overview of all spaces and messages first
@@ -975,11 +864,11 @@ export async function exportGoogleChatData(
   );
   displayExportOverview(spaceOverviews, dryRun);
 
+  // Note: Chat API also doesn't provide display names due to privacy restrictions
+
   // Statistics tracking
   let totalAttachmentsProcessed = 0;
   let totalAttachmentsSuccessful = 0;
-  let totalAvatarsProcessed = 0;
-  let totalAvatarsSuccessful = 0;
   let totalDriveFiles = 0;
 
   // Create progress bar for message processing
@@ -1001,10 +890,10 @@ export async function exportGoogleChatData(
           messages.map(async (message) => {
             const result = await processMessage(
               message,
-              avatarsDir,
               attachmentsDir,
               dryRun,
-              logger
+              logger,
+              uniqueUserIds
             );
 
             // Update progress with safe increment for concurrent operations
@@ -1018,8 +907,6 @@ export async function exportGoogleChatData(
         for (const result of messageResults) {
           totalAttachmentsProcessed += result.attachmentsProcessed;
           totalAttachmentsSuccessful += result.attachmentsSuccessful;
-          totalAvatarsProcessed += result.avatarsProcessed;
-          totalAvatarsSuccessful += result.avatarsSuccessful;
         }
 
         // Count drive files for this space
@@ -1046,8 +933,16 @@ export async function exportGoogleChatData(
   // Finish progress bar
   progressBar?.finish();
 
-  const exportData = {
+  // Batch fetch user names after processing all messages
+  console.log(`\n👥 Found ${uniqueUserIds.size} unique users in messages`);
+  const peoplesData = await batchFetchUserNames(
+    Array.from(uniqueUserIds),
+    logger
+  );
+
+  const exportData: ExportData = {
     export_timestamp: new Date().toISOString(),
+    peoples: peoplesData,
     spaces: exportedSpaces,
   };
 
@@ -1063,13 +958,22 @@ export async function exportGoogleChatData(
   displayExportSummary({
     attachmentsProcessed: totalAttachmentsProcessed,
     attachmentsSuccessful: totalAttachmentsSuccessful,
-    avatarsProcessed: totalAvatarsProcessed,
-    avatarsSuccessful: totalAvatarsSuccessful,
     driveFiles: totalDriveFiles,
     logger,
     logPath,
     isDryRun: dryRun,
   });
+
+  // Display peoples summary
+  const peoplesCount = Object.keys(peoplesData).length;
+  const peoplesWithNames = Object.values(peoplesData).filter(
+    (name) => name
+  ).length;
+  if (peoplesCount > 0) {
+    console.log(
+      `👥 People: ${peoplesWithNames}/${peoplesCount} full names retrieved`
+    );
+  }
 
   // Display user cache statistics
   const cacheStats = userCache.getStats();

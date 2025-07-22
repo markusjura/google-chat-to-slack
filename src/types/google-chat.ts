@@ -27,12 +27,14 @@ export interface GoogleMessage {
   annotations?: Annotation[];
 }
 
+export interface ExportData {
+  export_timestamp: string;
+  peoples: Record<string, string>; // Simple mapping: userId -> fullName
+  spaces: (Space & { messages: GoogleMessage[] })[];
+}
+
 export interface User {
   name: string;
-  type: 'HUMAN' | 'BOT';
-  displayName?: string;
-  email?: string;
-  avatarUrl?: string;
 }
 
 export interface GoogleAttachment {

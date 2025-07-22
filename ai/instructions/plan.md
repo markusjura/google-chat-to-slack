@@ -262,20 +262,16 @@ This plan breaks the project into four main phases. For each step, implement the
     - **Verification:** Update unit tests for `login`/`logout` to cover Slack. Manually run `pnpm start login slack` and `pnpm start logout slack`.
 
 2.  **Implement `import` Command**
-    - **Action:** Create the `import` command. It will only support importing to Slack for now. It should accept `--input` and `--channel` arguments.
+    - **Action:** Create the `import` command. It will only support importing to Slack for now. It should accept `--input` and `--channel` arguments. If not specified, we use our defaults.
     - **Verification:** Run `pnpm start import --help` to ensure arguments are correctly defined.
 
 3.  **Implement Import Logic**
     - **Action:** Implement the service logic to:
-      1.  Read and parse the `import.json` data file.
-      2.  Map users to Slack users (e.g., by email).
+      1.  Read and parse the `data/import/import.json` data file.
+      2.  Map users to Slack users (e.g., by email) including the avatar.
       3.  Find or create the target Slack channel.
-      4.  Post messages to the channel, respecting Slack's rate limits.
-    - **Verification:** Write unit tests for the user mapping and data parsing logic. Use mocked Slack API clients to test channel lookup and message posting.
-
-4.  **Test End-to-End Import**
-    - **Action:** Connect the import logic to the `import` command.
-    - **Verification:** Perform a manual end-to-end test by running `pnpm start import --input /tmp/import.json --channel <test-channel-name>`. Check the target Slack channel to confirm messages and attachments were imported correctly.
+      4.  Post messages to the channel with attachments, respecting Slack's rate limits .
+    - **Verification:** Run `pnpm start import --space competition` to test the import. Make sure that `export` and `transform` have been executed beforehand.
 
 ## Phase 4: Combined Migration Command
 

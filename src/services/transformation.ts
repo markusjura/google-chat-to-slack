@@ -1,6 +1,11 @@
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { GoogleMessage, Space, User } from '../types/google-chat';
+import type {
+  ExportData,
+  GoogleMessage,
+  Space,
+  User,
+} from '../types/google-chat';
 import type {
   ChannelMapping,
   SlackImportAttachment,
@@ -20,15 +25,9 @@ interface TransformStats {
   messages: number;
   users: number;
   attachments: number;
-  avatars: number;
   threads: number;
   reactions: number;
   mentions: number;
-}
-
-interface GoogleChatExportData {
-  export_timestamp: string;
-  spaces: Array<Space & { messages: GoogleMessage[] }>;
 }
 
 export async function transformGoogleChatToSlack(
@@ -45,7 +44,10 @@ export async function transformGoogleChatToSlack(
   );
 
   const exportData = await loadExportData(inputDir);
-  const { users, userMappings } = prepareUserData(exportData.spaces);
+  const { users, userMappings } = prepareUserData(
+    exportData.spaces,
+    exportData.peoples
+  );
   stats.users = users.length;
 
   const { channels } = await processChannels(
@@ -58,19 +60,9 @@ export async function transformGoogleChatToSlack(
     logger
   );
 
-  stats.avatars = await processAvatars(
-    inputDir,
-    outputDir,
-    users,
-    dryRun,
-    logger
-  );
-
   const slackImportData = createSlackImportData(
     exportData.export_timestamp,
-    channels,
-    userMappings,
-    users
+    channels
   );
 
   await writeOutput(slackImportData, outputDir, dryRun);
@@ -83,21 +75,23 @@ function initializeStats(): TransformStats {
     messages: 0,
     users: 0,
     attachments: 0,
-    avatars: 0,
     threads: 0,
     reactions: 0,
     mentions: 0,
   };
 }
 
-async function loadExportData(inputDir: string): Promise<GoogleChatExportData> {
+async function loadExportData(inputDir: string): Promise<ExportData> {
   const exportPath = path.join(inputDir, 'export.json');
   return JSON.parse(await readFile(exportPath, 'utf-8'));
 }
 
-function prepareUserData(spaces: Array<Space & { messages: GoogleMessage[] }>) {
+function prepareUserData(
+  spaces: Array<Space & { messages: GoogleMessage[] }>,
+  peoples: Record<string, string>
+) {
   const users = extractUniqueUsers(spaces);
-  const userMappings = createUserMappings(users);
+  const userMappings = createUserMappings(users, peoples);
   return { users, userMappings };
 }
 
@@ -154,36 +148,13 @@ async function processChannels(
   return { channels, channelMappings };
 }
 
-async function processAvatars(
-  inputDir: string,
-  outputDir: string,
-  users: User[],
-  dryRun: boolean,
-  logger: Logger
-): Promise<number> {
-  if (dryRun) {
-    return users.filter((u) => u.avatarUrl).length;
-  }
-  return await copyAvatarFiles(inputDir, outputDir, users, logger);
-}
-
 function createSlackImportData(
   exportTimestamp: string,
-  channels: SlackImportChannel[],
-  userMappings: UserMapping[],
-  users: User[]
+  channels: SlackImportChannel[]
 ): SlackImportData {
   return {
     export_timestamp: exportTimestamp,
     channels,
-    users: userMappings.map((mapping) => ({
-      email: mapping.google_chat_email,
-      display_name: mapping.display_name,
-      real_name: mapping.display_name,
-      avatar_local_path: users.find(
-        (u) => u.email === mapping.google_chat_email
-      )?.avatarUrl,
-    })),
   };
 }
 
@@ -211,10 +182,6 @@ async function displayTransformationSummary(
 
   if (stats.attachments > 0) {
     console.log(`   Attachments: ${stats.attachments} processed`);
-  }
-
-  if (stats.avatars > 0) {
-    console.log(`   Avatars: ${stats.avatars} processed`);
   }
 
   if (stats.threads > 0) {
@@ -280,7 +247,7 @@ function processMessageSender(
   userMap: Map<string, User>
 ): void {
   if (message.sender) {
-    const key = message.sender.email?.trim() || message.sender.name;
+    const key = message.sender.name;
     if (key) {
       userMap.set(key, message.sender);
     }
@@ -298,7 +265,7 @@ function processMessageMentions(
   for (const annotation of message.annotations) {
     if (isUserMention(annotation)) {
       const user = annotation.userMention.user;
-      const key = user.email?.trim() || user.name;
+      const key = user.name;
       if (key) {
         userMap.set(key, user);
       }
@@ -310,23 +277,17 @@ function isUserMention(annotation: any): boolean {
   return annotation.type === 'USER_MENTION' && annotation.userMention?.user;
 }
 
-function createUserMappings(users: User[]): UserMapping[] {
+function createUserMappings(
+  users: User[],
+  peoples: Record<string, string>
+): UserMapping[] {
   return users.map((user) => {
-    // Use real email if available, otherwise generate one
-    let email = user.email?.trim();
-    if (!email) {
-      if (user.displayName) {
-        email = `${user.displayName.toLowerCase().replace(/\s+/g, '.')}@google-chat.imported`;
-      } else {
-        const userId = user.name.replace('people/', '');
-        email = `user.${userId}@google-chat.imported`;
-      }
-    }
+    // Get display name from peoples mapping if available
+    const fullDisplayName = peoples[user.name] || user.name;
 
     return {
       google_chat_id: user.name,
-      google_chat_email: email,
-      display_name: user.displayName || email.split('@')[0],
+      display_name: fullDisplayName,
     };
   });
 }
@@ -414,8 +375,9 @@ async function transformSingleMessage(
   threadMap: Map<string, string>,
   logger: Logger
 ): Promise<SlackImportMessage | null> {
-  const userEmail = getUserEmail(message.sender, userMappings);
-  if (!userEmail) {
+  // Get display name for this message
+  const displayName = getDisplayName(message.sender, userMappings);
+  if (!displayName || displayName === 'Unknown User') {
     return null;
   }
 
@@ -435,7 +397,7 @@ async function transformSingleMessage(
 
   return {
     text: message.text || message.formattedText || '',
-    user_email: userEmail,
+    display_name: displayName,
     timestamp: message.createTime,
     thread_ts: threadTs,
     attachments: attachments.length > 0 ? attachments : undefined,
@@ -472,30 +434,17 @@ function createSlackChannel(
   };
 }
 
-function getUserEmail(
-  sender: User,
+function getDisplayName(
+  sender: User | undefined,
   userMappings: UserMapping[]
-): string | null {
-  if (sender?.email?.trim()) {
-    return sender.email;
+): string {
+  if (!sender?.name) {
+    return 'Unknown User';
   }
 
-  // Fallback: try to find by Google Chat ID
-  const mapping = userMappings.find((m) => m.google_chat_id === sender?.name);
-  if (mapping?.google_chat_email) {
-    return mapping.google_chat_email;
-  }
-
-  // Last resort: generate email from display name or user ID
-  if (sender?.displayName) {
-    return `${sender.displayName.toLowerCase().replace(/\s+/g, '.')}@google-chat.imported`;
-  }
-  if (sender?.name) {
-    const userId = sender.name.replace('people/', '');
-    return `user.${userId}@google-chat.imported`;
-  }
-
-  return null;
+  // Find display name in mappings
+  const mapping = userMappings.find((m) => m.google_chat_id === sender.name);
+  return mapping?.display_name || sender.name;
 }
 
 async function transformAttachments(
@@ -562,61 +511,20 @@ function transformReactions(
 function transformMentions(
   googleAnnotations: any[],
   userMappings: UserMapping[]
-): Array<{ user_email: string; display_name: string }> {
+): Array<{ display_name: string }> {
   return googleAnnotations
     .filter((annotation) => annotation.type === 'USER_MENTION')
     .map((annotation) => {
       const mentionedUser = annotation.userMention?.user;
       const mapping = userMappings.find(
-        (m) =>
-          m.google_chat_id === mentionedUser?.name ||
-          m.google_chat_email === mentionedUser?.email
+        (m) => m.google_chat_id === mentionedUser?.name
       );
 
       return mapping
         ? {
-            user_email: mapping.google_chat_email,
             display_name: mapping.display_name,
           }
         : null;
     })
-    .filter(Boolean) as Array<{ user_email: string; display_name: string }>;
-}
-
-async function copyAvatarFiles(
-  inputDir: string,
-  outputDir: string,
-  users: User[],
-  logger: Logger
-): Promise<number> {
-  const avatarsInputDir = path.join(inputDir, 'avatars');
-  const avatarsOutputDir = path.join(outputDir, 'avatars');
-
-  await mkdir(avatarsOutputDir, { recursive: true });
-
-  const usersWithAvatars = users.filter((user) => user.avatarUrl);
-
-  const copyPromises = usersWithAvatars.map(async (user) => {
-    try {
-      const filename = path.basename(user.avatarUrl as string);
-      const sourceFile = path.join(avatarsInputDir, filename);
-      const destFile = path.join(avatarsOutputDir, filename);
-
-      await copyFile(sourceFile, destFile);
-      return true;
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      const userIdentifier = user.displayName || user.email || 'unknown';
-      logger.addError(
-        'file_copy',
-        userIdentifier,
-        `Failed to copy avatar: ${errorMessage}`
-      );
-      return false;
-    }
-  });
-
-  const results = await Promise.all(copyPromises);
-  return results.filter(Boolean).length;
+    .filter(Boolean) as Array<{ display_name: string }>;
 }

@@ -344,17 +344,16 @@ export interface SlackImportChannel {
 
 export interface SlackImportMessage {
   text: string;
-  user_email: string;
+  display_name: string; // User's display name for the message
   timestamp: string; // ISO string, will be used for ordering
   thread_ts?: string; // Parent message timestamp for thread replies
   attachments?: SlackImportAttachment[];
   reactions?: Array<{
     name: string;
     count: number;
-    users: string[]; // User emails
+    users: string[]; // User display names
   }>;
   mentions?: Array<{
-    user_email: string;
     display_name: string;
   }>;
 }
@@ -370,19 +369,11 @@ export interface SlackImportAttachment {
 export interface SlackImportData {
   export_timestamp: string;
   channels: SlackImportChannel[];
-  users: Array<{
-    email: string;
-    display_name: string;
-    real_name?: string;
-    avatar_local_path?: string; // Path to downloaded avatar
-  }>;
 }
 
 // Utility types for mapping
 export interface UserMapping {
   google_chat_id: string; // people/123456789
-  google_chat_email: string;
-  slack_user_id?: string; // Will be resolved during import
   display_name: string;
 }
 
@@ -392,4 +383,17 @@ export interface ChannelMapping {
   slack_channel_name: string; // Normalized for Slack
   is_private: boolean;
   slack_channel_id?: string; // Will be set during import
+}
+
+// Additional API response types
+export interface SlackUsersListResponse {
+  ok: boolean;
+  members: SlackUser[];
+  error?: string;
+}
+
+export interface SlackConversationsListResponse {
+  ok: boolean;
+  channels: SlackChannel[];
+  error?: string;
 }

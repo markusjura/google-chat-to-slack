@@ -6,7 +6,9 @@ export type LogType =
   | 'attachment_download'
   | 'user_fetch'
   | 'avatar_download'
-  | 'file_copy';
+  | 'file_copy'
+  | 'file_upload'
+  | 'message_post';
 
 export interface LogEntry {
   timestamp: string;
@@ -19,6 +21,11 @@ export interface LogEntry {
 
 export class Logger {
   private entries: LogEntry[] = [];
+  private context: string;
+
+  constructor(context = 'Export') {
+    this.context = context;
+  }
 
   addError(
     type: LogType,
@@ -97,6 +104,8 @@ export class Logger {
       user_fetch: 0,
       avatar_download: 0,
       file_copy: 0,
+      file_upload: 0,
+      message_post: 0,
     };
 
     for (const entry of this.entries.filter((e) => e.level === 'error')) {
@@ -112,6 +121,8 @@ export class Logger {
       user_fetch: 0,
       avatar_download: 0,
       file_copy: 0,
+      file_upload: 0,
+      message_post: 0,
     };
 
     for (const entry of this.entries.filter((e) => e.level === 'warning')) {
@@ -145,7 +156,7 @@ export class Logger {
     const errors = this.entries.filter((entry) => entry.level === 'error');
     const warnings = this.entries.filter((entry) => entry.level === 'warning');
 
-    const header = `Chat Migrator Export Log
+    const header = `Chat Migrator ${this.context} Log
 Generated: ${new Date().toISOString()}
 Total Issues: ${this.getTotalCount()} (${errors.length} errors, ${warnings.length} warnings)
 

@@ -1,40 +1,65 @@
+import path from 'node:path';
 import type { CommandModule } from 'yargs';
+import { importSlackData } from '../../services/slack';
 
-// Placeholder for actual import logic
-// biome-ignore lint/suspicious/useAwait: placeholder
-async function importToSlack(inputFile: string, channel: string) {
-  console.log(`Importing data from ${inputFile} to Slack channel ${channel}`);
-  // In the future, this will read the transformed file and import data to Slack.
+function getImportDirectory(): string | null {
+  const importDir = path.resolve('data/import');
+  const fs = require('node:fs');
+
+  try {
+    return fs.existsSync(importDir) && fs.statSync(importDir).isDirectory()
+      ? importDir
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 type ImportArgs = {
-  input: string;
-  channel: string;
+  input?: string;
+  space?: string;
   dryRun?: boolean;
 };
 
 export const importCommand: CommandModule<object, ImportArgs> = {
   command: 'import',
-  describe: 'Import data into Slack',
+  describe: 'Import transformed data to Slack workspace',
   builder: (yargs) =>
     yargs
       .option('input', {
-        describe: 'The path to the transformed input file (e.g., import.json)',
+        describe: 'Path to the import directory (defaults to latest import)',
         type: 'string',
-        demandOption: true,
       })
-      .option('channel', {
-        describe: 'The Slack channel to import data into',
+      .option('space', {
+        describe: 'Target Slack channel name for import',
         type: 'string',
-        demandOption: true,
       })
       .option('dry-run', {
-        describe:
-          'Perform a dry run, testing the connection and posting a test message',
+        describe: 'Test connection, create/delete test channel and message',
         type: 'boolean',
       }),
   handler: async (argv) => {
-    console.log('Importing data to Slack...');
-    await importToSlack(argv.input, argv.channel);
+    // Determine input directory
+    let inputDir = argv.input;
+    if (!inputDir) {
+      const importDir = getImportDirectory();
+      if (!importDir) {
+        console.error(
+          'No import directory found. Please run transform first or specify --input'
+        );
+        process.exit(1);
+      }
+      inputDir = importDir;
+      console.log(`Using import directory: ${inputDir}`);
+    }
+
+    try {
+      await importSlackData(inputDir, argv.space, {
+        dryRun: argv.dryRun,
+      });
+    } catch (error) {
+      console.error('Import failed:', error);
+      process.exit(1);
+    }
   },
 };
