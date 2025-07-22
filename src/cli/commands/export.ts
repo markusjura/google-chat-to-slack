@@ -5,7 +5,7 @@ import { exportGoogleChatData } from '../../services/google-chat';
 
 type ExportArgs = {
   service: string;
-  space?: string;
+  channel?: string;
   output: string;
   dryRun?: boolean;
 };
@@ -20,8 +20,8 @@ export const exportCommand: CommandModule<object, ExportArgs> = {
         type: 'string',
         demandOption: true,
       })
-      .option('space', {
-        describe: 'The name of the space to export',
+      .option('channel', {
+        describe: 'The name of the Google Chat space to export',
         type: 'string',
       })
       .option('output', {
@@ -47,7 +47,7 @@ export const exportCommand: CommandModule<object, ExportArgs> = {
 
       const outputPath = path.join(outputDir, 'export.json');
       console.log('outputPath', outputPath);
-      await exportGoogleChatData(argv.space, outputPath, {
+      await exportGoogleChatData(argv.channel, outputPath, {
         dryRun: argv.dryRun,
       });
     } else {
