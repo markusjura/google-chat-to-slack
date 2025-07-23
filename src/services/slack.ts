@@ -179,88 +179,89 @@ async function uploadAndPostMessageWithAttachments(
   attachments: SlackImportAttachment[],
   threadTs: string | undefined,
   logger: Logger
-): Promise<string | undefined> {
-  try {
-    // Step 1: Get upload URLs for all files
-    const uploadPromises = attachments.map(async (attachment) => {
-      const fileContent = await readFile(attachment.local_path);
-      const uploadUrlResult = await slack.files.getUploadURLExternal({
-        filename: attachment.filename,
-        length: fileContent.length,
-        alt_text: attachment.alt_text,
-      });
+): Promise<string> {
+  // Step 1: Process each file sequentially to maintain order
+  const uploadData: Array<{
+    attachment: SlackImportAttachment;
+    fileContent: Buffer;
+    uploadUrl: string;
+    fileId: string;
+  }> = [];
 
-      if (
-        !(
-          uploadUrlResult.ok &&
-          uploadUrlResult.upload_url &&
-          uploadUrlResult.file_id
-        )
-      ) {
-        throw new Error(
-          `Failed to get upload URL for ${attachment.filename}: ${uploadUrlResult.error}`
-        );
-      }
+  for (const attachment of attachments) {
+    let fileContent: Buffer;
+    try {
+      // biome-ignore lint/nursery/noAwaitInLoop: Files must be processed sequentially to preserve order
+      fileContent = await readFile(attachment.local_path);
+    } catch (fileError) {
+      const errorMessage = `Failed to read attachment file ${attachment.filename} at ${attachment.local_path}: ${fileError instanceof Error ? fileError.message : String(fileError)}`;
+      logger.addError('message_post', attachment.filename, errorMessage);
+      throw new Error(errorMessage);
+    }
 
-      return {
-        attachment,
-        fileContent,
-        uploadUrl: uploadUrlResult.upload_url,
-        fileId: uploadUrlResult.file_id,
-      };
+    const uploadUrlResult = await slack.files.getUploadURLExternal({
+      filename: attachment.filename,
+      length: fileContent.length,
+      alt_text: attachment.alt_text,
     });
 
-    const uploadData = await Promise.all(uploadPromises);
-
-    // Step 2: Upload all files to their URLs
-    const fileUploadPromises = uploadData.map(
-      async ({ fileContent, uploadUrl, attachment }) => {
-        const uploadResponse = await fetch(uploadUrl, {
-          method: 'POST',
-          body: fileContent as BodyInit,
-        });
-
-        if (!uploadResponse.ok) {
-          throw new Error(
-            `File upload failed for ${attachment.filename}: ${uploadResponse.statusText}`
-          );
-        }
-      }
-    );
-
-    await Promise.all(fileUploadPromises);
-
-    // Step 3: Complete the upload and post message with attachments
-    const completeParams: any = {
-      files: uploadData.map(({ fileId, attachment }) => ({
-        id: fileId,
-        title: attachment.title || attachment.filename,
-      })),
-      channel_id: channelId,
-      initial_comment: messageText,
-    };
-
-    if (threadTs) {
-      completeParams.thread_ts = threadTs;
+    if (
+      !(
+        uploadUrlResult.ok &&
+        uploadUrlResult.upload_url &&
+        uploadUrlResult.file_id
+      )
+    ) {
+      throw new Error(
+        `Failed to get upload URL for ${attachment.filename}: ${uploadUrlResult.error}`
+      );
     }
 
-    const completeResult =
-      await slack.files.completeUploadExternal(completeParams);
-
-    if (!completeResult.ok) {
-      throw new Error(`Failed to complete upload: ${completeResult.error}`);
-    }
-
-    return (completeResult as any).ts;
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.addWarning(
-      'file_upload',
-      `${attachments.length} attachments`,
-      `Failed to upload attachments: ${errorMessage}`
-    );
-    return;
+    uploadData.push({
+      attachment,
+      fileContent,
+      uploadUrl: uploadUrlResult.upload_url,
+      fileId: uploadUrlResult.file_id,
+    });
   }
+
+  // Step 2: Upload files sequentially to maintain order
+  for (const { fileContent, uploadUrl, attachment } of uploadData) {
+    // biome-ignore lint/nursery/noAwaitInLoop: Files must be uploaded sequentially to preserve order
+    const uploadResponse = await fetch(uploadUrl, {
+      method: 'POST',
+      body: fileContent as BodyInit,
+    });
+
+    if (!uploadResponse.ok) {
+      throw new Error(
+        `File upload failed for ${attachment.filename}: ${uploadResponse.statusText}`
+      );
+    }
+  }
+
+  // Step 3: Complete the upload and post message with attachments
+  const completeParams: any = {
+    files: uploadData.map(({ fileId, attachment }) => ({
+      id: fileId,
+      title: attachment.title || attachment.filename,
+    })),
+    channel_id: channelId,
+    initial_comment: messageText,
+  };
+
+  if (threadTs) {
+    completeParams.thread_ts = threadTs;
+  }
+
+  const completeResult =
+    await slack.files.completeUploadExternal(completeParams);
+
+  if (!completeResult.ok) {
+    throw new Error(`Failed to complete upload: ${completeResult.error}`);
+  }
+
+  return (completeResult as any).ts;
 }
 
 async function postTextMessage(
@@ -294,8 +295,12 @@ async function addReactionsToMessage(
   reactions: { name: string }[],
   logger: Logger
 ): Promise<void> {
-  const reactionPromises = reactions.map(async (reaction) => {
+  // Process reactions sequentially to maintain order
+  // biome-ignore lint/style/useForOf: Sequential processing required for API rate limiting
+  for (let i = 0; i < reactions.length; i++) {
+    const reaction = reactions[i];
     try {
+      // biome-ignore lint/nursery/noAwaitInLoop: Reactions must be added sequentially to preserve order
       await slack.reactions.add({
         channel: channelId,
         timestamp: messageTs,
@@ -310,9 +315,7 @@ async function addReactionsToMessage(
         errorMessage
       );
     }
-  });
-
-  await Promise.all(reactionPromises);
+  }
 }
 
 async function postSlackMessage(
@@ -336,7 +339,7 @@ async function postSlackMessage(
     let messageTs: string | undefined;
 
     if (message.attachments?.length) {
-      // Post with attachments - don't fall back to text-only if this fails
+      // Post with attachments
       messageTs = await uploadAndPostMessageWithAttachments(
         slack,
         channelId,
@@ -345,9 +348,6 @@ async function postSlackMessage(
         message.thread_ts,
         logger
       );
-
-      // If attachment upload failed, don't post a separate text message
-      // The failure is already logged in uploadAndPostMessageWithAttachments
     } else {
       // No attachments, just post text
       messageTs = await postTextMessage(
