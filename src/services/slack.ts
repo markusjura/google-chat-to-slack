@@ -22,6 +22,7 @@ interface SlackMessageArgs {
 
 interface ImportOptions {
   dryRun?: boolean;
+  clean?: boolean;
 }
 
 // Function declarations (following Declaration Before Use principle)
@@ -136,10 +137,21 @@ async function resolveChannelIdByName(
   return;
 }
 
+async function deleteSlackChannel(
+  slack: WebClient,
+  channelId: string
+): Promise<void> {
+  const result = await slack.conversations.archive({ channel: channelId });
+  if (!result.ok) {
+    throw new Error(`Failed to delete channel: ${result.error}`);
+  }
+}
+
 async function findOrCreateSlackChannel(
   slack: WebClient,
   name: string,
-  isPrivate: boolean
+  isPrivate: boolean,
+  shouldClean = false
 ): Promise<SlackChannel> {
   // Check if 'name' is actually a Slack channel ID (starts with 'C')
   if (name.startsWith('C')) {
@@ -148,6 +160,13 @@ async function findOrCreateSlackChannel(
 
   // First try to find existing channel
   let channel = await findSlackChannelByName(slack, name);
+
+  // If clean flag is set and channel exists, delete it first
+  if (shouldClean && channel) {
+    console.log(`   Deleting existing channel: #${name}`);
+    await deleteSlackChannel(slack, channel.id);
+    channel = undefined; // Force recreation
+  }
 
   if (!channel) {
     // Try to create new channel if not found
@@ -420,7 +439,8 @@ async function processChannel(
     is_private: boolean;
     messages: SlackImportMessage[];
   },
-  logger: Logger
+  logger: Logger,
+  shouldClean = false
 ): Promise<void> {
   const channelName = channelData.name;
 
@@ -430,7 +450,8 @@ async function processChannel(
   const channel = await findOrCreateSlackChannel(
     slack,
     channelName,
-    channelData.is_private
+    channelData.is_private,
+    shouldClean
   );
 
   // Process messages with progress bar
@@ -581,7 +602,7 @@ export async function importSlackData(
   channelFilters?: string | string[],
   options: ImportOptions = {}
 ): Promise<void> {
-  const { dryRun = false } = options;
+  const { dryRun = false, clean = false } = options;
   const logger = new Logger('Import');
   const slack = await getSlackWebClient();
 
@@ -613,7 +634,7 @@ export async function importSlackData(
   // Process each channel
   for (const channelData of channelsToProcess) {
     // biome-ignore lint/nursery/noAwaitInLoop: Channels must be processed sequentially to manage rate limits properly
-    await processChannel(slack, channelData, logger);
+    await processChannel(slack, channelData, logger, clean);
   }
 
   // Display summary

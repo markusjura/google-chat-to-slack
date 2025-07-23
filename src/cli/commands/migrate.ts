@@ -13,6 +13,7 @@ interface Args {
   channel?: string;
   output?: string;
   'dry-run'?: boolean;
+  clean?: boolean;
 }
 
 export const migrateCommand: CommandModule<object, Args> = {
@@ -37,6 +38,12 @@ export const migrateCommand: CommandModule<object, Args> = {
           'Perform dry-run: minimal export, show transform stats, test Slack connection',
         default: false,
       })
+      .option('clean', {
+        type: 'boolean',
+        describe:
+          'Delete and recreate Slack channels before importing (requires channels:manage scope)',
+        default: false,
+      })
       .example('$0 migrate', 'Migrate all Google Chat spaces to Slack')
       .example(
         '$0 migrate --channel general',
@@ -57,7 +64,7 @@ export const migrateCommand: CommandModule<object, Args> = {
   },
   handler: async (args) => {
     try {
-      const { channel, output = 'data', 'dry-run': isDryRun } = args;
+      const { channel, output = 'data', 'dry-run': isDryRun, clean } = args;
 
       const exportDir = path.join(output, 'export');
       const importDir = path.join(output, 'import');
@@ -126,7 +133,7 @@ export const migrateCommand: CommandModule<object, Args> = {
       console.log(importText);
       console.log('═'.repeat(importText.length));
 
-      await importSlackData(importDir, channel, { dryRun: isDryRun });
+      await importSlackData(importDir, channel, { dryRun: isDryRun, clean });
 
       console.log('✅ Import completed successfully');
       console.log('');

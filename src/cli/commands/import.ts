@@ -19,6 +19,7 @@ type ImportArgs = {
   input?: string;
   channel?: string | string[];
   dryRun?: boolean;
+  clean?: boolean;
 };
 
 export const importCommand: CommandModule<object, ImportArgs> = {
@@ -38,6 +39,11 @@ export const importCommand: CommandModule<object, ImportArgs> = {
       })
       .option('dry-run', {
         describe: 'Test connection, create/delete test channel and message',
+        type: 'boolean',
+      })
+      .option('clean', {
+        describe:
+          'Delete and recreate channels before importing (requires channels:manage scope)',
         type: 'boolean',
       })
       .strict()
@@ -100,6 +106,7 @@ export const importCommand: CommandModule<object, ImportArgs> = {
     try {
       await importSlackData(inputDir, argv.channel, {
         dryRun: argv.dryRun,
+        clean: argv.clean,
       });
     } catch (error) {
       console.error('Import failed:', error);
