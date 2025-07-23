@@ -11,7 +11,6 @@ export interface GoogleMessage {
   name: string;
   sender: User;
   createTime: string;
-  lastUpdateTime?: string;
   text: string; // Now contains the formatted text from Google Chat API's formattedText field
   thread?: {
     name: string;
@@ -20,7 +19,6 @@ export interface GoogleMessage {
     name: string;
   };
   attachment?: GoogleAttachment[];
-  attachedGifs?: AttachedGif[];
   emojiReactionSummaries?: EmojiReactionSummary[];
   annotations?: Annotation[];
 }
@@ -40,7 +38,6 @@ export interface GoogleAttachment {
   contentName?: string;
   contentType?: string;
   downloadUri?: string;
-  thumbnailUri?: string;
   source?: 'DRIVE_FILE' | 'UPLOADED_CONTENT';
   resourceName?: string;
   attachmentDataRef?: {
@@ -51,10 +48,6 @@ export interface GoogleAttachment {
   };
   // Local file path after download
   localFilePath?: string;
-}
-
-export interface AttachedGif {
-  uri: string;
 }
 
 export interface EmojiReactionSummary {
