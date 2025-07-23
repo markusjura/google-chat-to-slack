@@ -663,10 +663,7 @@ async function processMessageAttachments(
   isDryRun: boolean,
   logger: Logger
 ): Promise<{ processed: number; successful: number }> {
-  const allAttachments = [
-    ...(message.attachments || []),
-    ...(message.attachment || []),
-  ];
+  const allAttachments = message.attachment || [];
 
   if (allAttachments.length === 0) {
     return { processed: 0, successful: 0 };
@@ -738,14 +735,7 @@ export async function listMessages(
     });
 
     if (res.data.messages) {
-      // Normalize messages to use formattedText as the text field
-      const normalizedMessages = res.data.messages.map((message: any) => {
-        return {
-          ...message,
-          text: message.formattedText || message.text || '',
-        } as GoogleMessage;
-      });
-      messages.push(...normalizedMessages);
+      messages.push(...(res.data.messages as GoogleMessage[]));
     }
     pageToken = res.data.nextPageToken ?? undefined;
     if (limit && messages.length >= limit) {
@@ -904,10 +894,7 @@ export async function exportGoogleChatData(
 
         // Count drive files for this space
         for (const message of messages) {
-          const attachments = [
-            ...(message.attachments || []),
-            ...(message.attachment || []),
-          ];
+          const attachments = message.attachment || [];
           totalDriveFiles += attachments.filter(
             (a) => a.driveDataRef?.driveFileId
           ).length;

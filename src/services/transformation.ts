@@ -381,7 +381,7 @@ async function transformMessage(
 
   const [attachments, reactions, mentions] = await Promise.all([
     transformAttachments(
-      message.attachments || message.attachment || [],
+      message.attachment || [],
       inputDir,
       outputDir,
       dryRun,

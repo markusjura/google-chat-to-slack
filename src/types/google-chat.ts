@@ -19,7 +19,6 @@ export interface GoogleMessage {
   space: {
     name: string;
   };
-  attachments?: GoogleAttachment[];
   attachment?: GoogleAttachment[];
   attachedGifs?: AttachedGif[];
   emojiReactionSummaries?: EmojiReactionSummary[];
