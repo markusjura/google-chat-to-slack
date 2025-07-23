@@ -170,7 +170,7 @@ The project will adhere to the following file structure, which is designed for c
 │   │   ├── commands/           # Command implementations (e.g. login, export)
 │   │   │   ├── login.ts        # Implements `login <service>`
 │   │   │   ├── logout.ts       # Implements `logout <service>`
-│   │   │   ├── export.ts       # Implements `export <service>`
+│   │   │   ├── export.ts       # Implements `export` (Google Chat)
 │   │   │   ├── import.ts       # Implements `import <service>`
 │   │   │   └── migrate.ts
 │   │   └── parser.ts           # Argument parsing logic (e.g., using yargs)
@@ -209,10 +209,10 @@ This plan breaks the project into four main phases. For each step, implement the
     - **Status:** COMPLETED - OAuth 2.0 flow implemented with secure token storage using system keychain.
     - **Verification:** Commands `pnpm start login google-chat` and `pnpm start logout google-chat` are working correctly.
 
-2.  **✅ Implement `export google-chat` Command**
-    - **Action:** Create the `export <service>` command and implement the logic for `google-chat`. It should accept `--space`, `--output`, and `--dry-run` arguments.
+2.  **✅ Implement `export` Command**
+    - **Action:** Create the `export` command for Google Chat. It should accept `--space`, `--output`, and `--dry-run` arguments.
     - **Status:** COMPLETED - Command implemented with all required arguments.
-    - **Verification:** `pnpm start export google-chat --help` shows correct argument definitions.
+    - **Verification:** `pnpm start export --help` shows correct argument definitions.
 
 3.  **✅ Implement Data Fetching Logic**
     - **Action:** Implement the service logic to list a user's spaces and fetch all messages for a given space, including handling API pagination, attachment downloads, and avatar downloads.
@@ -225,14 +225,14 @@ This plan breaks the project into four main phases. For each step, implement the
     - **Additional Features:** Avatar downloads, user profile fetching, local file management.
 
 4.  **✅ Finalize Export and Test End-to-End**
-    - **Action:** Connect the data fetching logic to the `export google-chat` command, writing the complete export data including downloaded files to the specified output directory.
+    - **Action:** Connect the data fetching logic to the `export` command, writing the complete export data including downloaded files to the specified output directory.
     - **Status:** COMPLETED - End-to-end export functionality working including:
       - Directory structure creation (`attachments/`, `avatars/`)
       - File downloads and local path updates in JSON
       - Unified dry-run implementation using options pattern (eliminates code duplication)
       - Dry-run tests the actual production logic with limited scope (1 message, 1 space)
       - Complete error handling and authentication
-    - **Verification:** `pnpm start export google-chat --dry-run` successfully exports data with downloaded avatars.
+    - **Verification:** `pnpm start export --dry-run` successfully exports data with downloaded avatars.
     - **Architecture:** Refactored to use single `exportGoogleChatData()` function with `ExportOptions` interface, following Node.js/TypeScript best practices.
 
 ## Phase 2: Data Transformation

@@ -76,7 +76,7 @@ Each command is implemented as a separate module in `src/cli/commands/`:
 **Test Structure (`src/__tests__/`):**
 ```
 ├── commands/          # CLI command integration tests
-│   ├── export.test.ts      # export google-chat [--space X] [--dry-run]
+│   ├── export.test.ts      # export [--space X] [--dry-run]
 │   ├── import.test.ts      # import [--channel X] [--dry-run]  
 │   ├── transform.test.ts   # transform [--dry-run]
 │   ├── login.test.ts       # login google-chat/slack
@@ -112,7 +112,7 @@ Use `vi.mock` for dependency isolation. Manual CLI testing available via dry-run
 ```bash
 # Complete migration workflow
 pnpm start login google-chat                # Authenticate with Google Chat
-pnpm start export google-chat --space X     # Export specific space
+pnpm start export --space X                 # Export specific space
 pnpm start transform                        # Convert to Slack format
 pnpm start login slack                      # Setup Slack bot token
 pnpm start import --channel target-channel  # Import to Slack
@@ -126,8 +126,8 @@ pnpm check                                        # Format + lint + typecheck co
 
 # Testing
 pnpm test --run                                   # Run Vitest unit tests
-pnpm start export google-chat --space competition # Test full export with minimal data
-pnpm start export google-chat --dry-run           # Test export with minimal data
+pnpm start export --space competition             # Test full export with minimal data
+pnpm start export --dry-run                       # Test export with minimal data
 pnpm start transform                              # Test transformation
 pnpm start import --dry-run                       # Test Slack API connectivity
 ```

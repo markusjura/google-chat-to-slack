@@ -12,7 +12,7 @@ pnpm install
 
 ## Usage
 
-To run the CLI commands, use `pnpm start <command> <service>`.
+To run the CLI commands, use `pnpm start <command>`.
 
 ### Login
 
@@ -32,20 +32,20 @@ pnpm start logout google-chat
 
 ### Export
 
-To export data from a chat service (e.g., Google Chat):
+To export data from Google Chat:
 
 ```bash
 # Export all spaces and messages to data/export/
-pnpm start export google-chat
+pnpm start export
 
 # Export a specific space
-pnpm start export google-chat --space SPACE_ID
+pnpm start export --space SPACE_ID
 
 # Test the export process with dry-run (1 message, 1 space)
-pnpm start export google-chat --dry-run
+pnpm start export --dry-run
 
 # Specify custom output directory (default: data/export)
-pnpm start export google-chat --output /custom/path
+pnpm start export --output /custom/path
 ```
 
 The export command will:
