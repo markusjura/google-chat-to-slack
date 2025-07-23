@@ -318,11 +318,11 @@ async function transformChannel(
   dryRun: boolean,
   logger: Logger
 ): Promise<SlackImportChannel> {
-  const sortedMessages = sortMessagesByTime(space.messages);
+  // Preserve message order from export to maintain conversation flow
   const threadMap = new Map<string, string>();
 
   const slackMessages = await transformMessages(
-    sortedMessages,
+    space.messages,
     userMappings,
     inputDir,
     outputDir,
@@ -332,13 +332,6 @@ async function transformChannel(
   );
 
   return createSlackChannel(space, slackMessages);
-}
-
-function sortMessagesByTime(messages: GoogleMessage[]): GoogleMessage[] {
-  return messages.sort(
-    (a, b) =>
-      new Date(a.createTime).getTime() - new Date(b.createTime).getTime()
-  );
 }
 
 async function transformMessages(
@@ -418,7 +411,9 @@ function getThreadTimestamp(
     return threadMap.get(message.thread.name);
   }
 
+  // First message in a thread becomes the parent - use its timestamp as thread identifier
   threadMap.set(message.thread.name, message.createTime);
+  return message.createTime;
 }
 
 function createSlackChannel(

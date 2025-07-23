@@ -370,63 +370,45 @@ async function processChannel(
     channelData.is_private
   );
 
-  // Sort messages chronologically
-  const sortedMessages = channelData.messages.sort(
-    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-  );
-
+  // Preserve message order from export to maintain conversation flow
   // Process messages with progress bar
   const progressBar = new ProgressBar(
-    sortedMessages.length,
+    channelData.messages.length,
     `Importing messages to #${channel.name}`
   );
 
-  const threadMap = new Map<string, string>(); // Map thread_ts to actual Slack ts
+  const threadMap = new Map<string, string>(); // Maps parent message timestamps to Slack message IDs for threading
 
-  // Process messages with smart batching - balance concurrency with progress visibility
-  const BATCH_SIZE = 5; // Process 5 messages concurrently at a time
+  // Process all messages sequentially to preserve export order and handle threading correctly
   let processedCount = 0;
 
-  for (let i = 0; i < sortedMessages.length; i += BATCH_SIZE) {
-    const batch = sortedMessages.slice(i, i + BATCH_SIZE);
+  for (const message of channelData.messages) {
+    // Map thread timestamp if this is a reply
+    let threadTs: string | undefined;
+    if (message.thread_ts) {
+      threadTs = threadMap.get(message.thread_ts);
+      // Only thread the message if parent was successfully posted to Slack
+    }
 
-    const batchPromises = batch.map((message) => {
-      // Map thread timestamp if this is a reply
-      let threadTs: string | undefined;
-      if (message.thread_ts) {
-        threadTs = threadMap.get(message.thread_ts);
-        // Only use thread_ts if we have a valid Slack timestamp mapping
-      }
+    const messageWithThread = { ...message, thread_ts: threadTs };
 
-      const messageWithThread = { ...message, thread_ts: threadTs };
-
-      return slackChatRateLimiter.execute(async () => {
-        const messageTs = await postSlackMessage(
-          slack,
-          channel.id,
-          messageWithThread,
-          logger
-        );
-
-        // If this is the first message in a thread, save the actual timestamp
-        if (
-          messageTs &&
-          message.thread_ts &&
-          !threadMap.has(message.thread_ts)
-        ) {
-          threadMap.set(message.thread_ts, messageTs);
-        }
-
-        return messageTs;
-      });
+    // biome-ignore lint/nursery/noAwaitInLoop: Messages must be processed sequentially to preserve order and threading
+    const messageTs = await slackChatRateLimiter.execute(async () => {
+      return await postSlackMessage(
+        slack,
+        channel.id,
+        messageWithThread,
+        logger
+      );
     });
 
-    // Wait for this batch to complete
-    // biome-ignore lint/nursery/noAwaitInLoop: Batching requires waiting for each batch to complete sequentially
-    await Promise.all(batchPromises);
+    // Save Slack timestamp for parent messages so replies can reference them
+    // Parent messages have thread_ts equal to their own timestamp
+    if (messageTs && message.thread_ts === message.timestamp) {
+      threadMap.set(message.timestamp, messageTs);
+    }
 
-    // Update progress after each batch
-    processedCount += batch.length;
+    processedCount++;
     progressBar.update(processedCount);
   }
 
