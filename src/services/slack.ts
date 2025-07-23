@@ -326,25 +326,37 @@ async function postSlackMessage(
       ? ` at _${new Date(message.timestamp).toLocaleString()}_`
       : '';
     const senderName = message.display_name || 'Unknown User';
-    const messageText = `*${senderName}*${timestampText}\n\n${message.text || ''}`;
 
-    // Try to post with attachments first, fall back to text-only if attachments fail
-    const messageTs = message.attachments?.length
-      ? (await uploadAndPostMessageWithAttachments(
-          slack,
-          channelId,
-          messageText,
-          message.attachments,
-          message.thread_ts,
-          logger
-        )) ||
-        (await postTextMessage(
-          slack,
-          channelId,
-          messageText,
-          message.thread_ts
-        ))
-      : await postTextMessage(slack, channelId, messageText, message.thread_ts);
+    // Build message text - if original text is empty, don't add extra newlines
+    const messageText = message.text
+      ? `*${senderName}*${timestampText}\n\n${message.text}`
+      : `*${senderName}*${timestampText}`;
+
+    // Post message with or without attachments
+    let messageTs: string | undefined;
+
+    if (message.attachments?.length) {
+      // Post with attachments - don't fall back to text-only if this fails
+      messageTs = await uploadAndPostMessageWithAttachments(
+        slack,
+        channelId,
+        messageText,
+        message.attachments,
+        message.thread_ts,
+        logger
+      );
+
+      // If attachment upload failed, don't post a separate text message
+      // The failure is already logged in uploadAndPostMessageWithAttachments
+    } else {
+      // No attachments, just post text
+      messageTs = await postTextMessage(
+        slack,
+        channelId,
+        messageText,
+        message.thread_ts
+      );
+    }
 
     // Add reactions if present
     if (message.reactions?.length && messageTs) {
