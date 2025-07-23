@@ -2,6 +2,7 @@ import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type {
   ExportData,
+  GoogleAttachment,
   GoogleMessage,
   Space,
   User,
@@ -429,7 +430,7 @@ function getDisplayName(
 }
 
 async function transformAttachments(
-  googleAttachments: any[],
+  googleAttachments: GoogleAttachment[],
   inputDir: string,
   outputDir: string,
   dryRun: boolean,
@@ -446,6 +447,15 @@ async function transformAttachments(
 
   const attachmentPromises = validAttachments.map(async (attachment) => {
     // Only process attachments that were successfully downloaded (have localFilePath)
+    if (!attachment.localFilePath) {
+      logger.addError(
+        'file_copy',
+        attachment.name || 'Unknown Attachment',
+        'Attachment has no local file path, skipping'
+      );
+      return;
+    }
+
     const sourceFileName = path.basename(attachment.localFilePath);
 
     const sourceFile = path.join(inputDir, 'attachments', sourceFileName);
@@ -470,8 +480,8 @@ async function transformAttachments(
       filename: sourceFileName,
       content_type: attachment.contentType,
       local_path: destFile,
-      title: attachment.name || sourceFileName,
-      alt_text: `Attachment: ${sourceFileName}`,
+      title: attachment.contentName || '',
+      alt_text: attachment.contentName || '',
     };
   });
 
