@@ -12,8 +12,7 @@ export interface GoogleMessage {
   sender: User;
   createTime: string;
   lastUpdateTime?: string;
-  text: string;
-  formattedText?: string;
+  text: string; // Now contains the formatted text from Google Chat API's formattedText field
   thread?: {
     name: string;
   };

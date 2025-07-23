@@ -738,7 +738,14 @@ export async function listMessages(
     });
 
     if (res.data.messages) {
-      messages.push(...(res.data.messages as GoogleMessage[]));
+      // Normalize messages to use formattedText as the text field
+      const normalizedMessages = res.data.messages.map((message: any) => {
+        return {
+          ...message,
+          text: message.formattedText || message.text || '',
+        } as GoogleMessage;
+      });
+      messages.push(...normalizedMessages);
     }
     pageToken = res.data.nextPageToken ?? undefined;
     if (limit && messages.length >= limit) {
@@ -786,11 +793,11 @@ function displayExportOverview(
   const logPrefix = isDryRun ? '[Dry Run] ' : '';
 
   console.log(`${logPrefix}Export Overview:`);
-  console.log(`   Spaces: ${overviews.length}`);
+  console.log(`   Channels: ${overviews.length}`);
   console.log(`   Total Messages: ${totalMessages}`);
 
   if (overviews.length > 1) {
-    console.log('\n   Space Details:');
+    console.log('\n   Channel Details:');
     for (const overview of overviews) {
       console.log(
         `   • ${overview.space.displayName}: ${overview.messageCount} messages`
@@ -833,7 +840,7 @@ export async function exportGoogleChatData(
 
   if (targetSpaces.length === 0) {
     console.log(
-      `No spaces found. If you provided a space name, ensure it's correct.`
+      `No channels found. If you provided a channel name, ensure it's correct.`
     );
     return;
   }

@@ -4,7 +4,7 @@ import type { CommandModule } from 'yargs';
 import { exportGoogleChatData } from '../../services/google-chat';
 
 type ExportArgs = {
-  space?: string;
+  channel?: string;
   output: string;
   dryRun?: boolean;
 };
@@ -14,7 +14,7 @@ export const exportCommand: CommandModule<object, ExportArgs> = {
   describe: 'Export data from Google Chat',
   builder: (yargs) =>
     yargs
-      .option('space', {
+      .option('channel', {
         describe: 'The name of the Google Chat space to export',
         type: 'string',
       })
@@ -40,7 +40,7 @@ export const exportCommand: CommandModule<object, ExportArgs> = {
 
     const outputPath = path.join(outputDir, 'export.json');
     console.log('outputPath', outputPath);
-    await exportGoogleChatData(argv.space, outputPath, {
+    await exportGoogleChatData(argv.channel, outputPath, {
       dryRun: argv.dryRun,
     });
   },
