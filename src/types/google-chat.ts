@@ -29,7 +29,7 @@ export interface GoogleMessage {
 
 export interface ExportData {
   export_timestamp: string;
-  peoples: Record<string, string>; // Simple mapping: userId -> fullName
+  users: Record<string, string>; // Simple mapping: userId -> fullName
   spaces: (Space & { messages: GoogleMessage[] })[];
 }
 

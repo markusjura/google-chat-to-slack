@@ -31,10 +31,7 @@ const USERS_PREFIX_REGEX = /^users\//;
 const SCOPES = [
   'https://www.googleapis.com/auth/chat.spaces.readonly',
   'https://www.googleapis.com/auth/chat.messages.readonly',
-  'https://www.googleapis.com/auth/chat.memberships.readonly',
   'https://www.googleapis.com/auth/drive.readonly',
-  'https://www.googleapis.com/auth/userinfo.profile',
-  'https://www.googleapis.com/auth/userinfo.email',
   // Directory API for admin access to all user profiles
   'https://www.googleapis.com/auth/admin.directory.user.readonly',
 ];
@@ -75,7 +72,7 @@ function startServerForCodeRedirect(): Promise<string> {
   });
 }
 
-export async function loginToGoogleChat(): Promise<void> {
+export async function loginToGoogle(): Promise<void> {
   const oAuth2Client = getOauth2Client();
 
   const authUrl = oAuth2Client.generateAuthUrl({
@@ -90,8 +87,8 @@ export async function loginToGoogleChat(): Promise<void> {
 
   const { tokens } = await oAuth2Client.getToken(code);
   if (tokens.refresh_token) {
-    await setToken('google-chat', tokens.refresh_token);
-    console.log('Successfully logged in to Google Chat.');
+    await setToken('google', tokens.refresh_token);
+    console.log('Successfully logged in to Google.');
   } else {
     console.error('Failed to get refresh token.');
   }
@@ -99,11 +96,9 @@ export async function loginToGoogleChat(): Promise<void> {
 
 async function getAuthenticatedOauth2Client(): Promise<OAuth2Client> {
   const oAuth2Client = getOauth2Client();
-  const refreshToken = await getToken('google-chat');
+  const refreshToken = await getToken('google');
   if (!refreshToken) {
-    throw new Error(
-      'User not authenticated. Please run "login google-chat" first.'
-    );
+    throw new Error('User not authenticated. Please run "login google" first.');
   }
   oAuth2Client.setCredentials({ refresh_token: refreshToken });
 
@@ -135,35 +130,21 @@ async function fetchUserWithDirectoryAPI(
     const oAuth2Client = await getAuthenticatedOauth2Client();
     const admin = google.admin({ version: 'directory_v1', auth: oAuth2Client });
 
-    // Remove 'users/' prefix to get the numeric ID
     const userKey = userId.replace(USERS_PREFIX_REGEX, '');
-
-    // Note: Rate limiting now handled by caller
-    const result = await admin.users.get({
-      userKey,
-      // Remove viewType since we're using admin privileges
-    });
-
+    const result = await admin.users.get({ userKey });
     const user = result.data;
 
-    // Try different name formats
+    // Check name fields in priority order: displayName -> fullName -> primaryEmail
+    if (user?.name?.displayName) {
+      return user.name.displayName;
+    }
+
     if (user?.name?.fullName) {
       return user.name.fullName;
     }
 
-    // Construct from parts if fullName not available
-    const givenName = user?.name?.givenName || '';
-    const familyName = user?.name?.familyName || '';
-    const fullName = `${givenName} ${familyName}`.trim();
-
-    if (fullName) {
-      return fullName;
-    }
-
-    // Last resort - use primaryEmail local part
     if (user?.primaryEmail) {
-      const emailName = user.primaryEmail.split('@')[0];
-      return emailName;
+      return user.primaryEmail;
     }
 
     logger.addWarning(
@@ -198,7 +179,7 @@ async function batchFetchUserNames(
   userIds: string[],
   logger: Logger
 ): Promise<Record<string, string>> {
-  const peoplesData: Record<string, string> = {};
+  const usersData: Record<string, string> = {};
 
   // Check cache first
   const uncachedUserIds: string[] = [];
@@ -206,7 +187,7 @@ async function batchFetchUserNames(
     if (personNamesCache.has(userId)) {
       const cachedName = personNamesCache.get(userId);
       if (cachedName) {
-        peoplesData[userId] = cachedName;
+        usersData[userId] = cachedName;
       }
     } else {
       uncachedUserIds.push(userId);
@@ -232,14 +213,14 @@ async function batchFetchUserNames(
 
   const userResults = await Promise.all(userFetchPromises);
 
-  // Aggregate results into peoplesData
+  // Aggregate results into usersData
   for (const { userId, fullName } of userResults) {
     if (fullName) {
-      peoplesData[userId] = fullName;
+      usersData[userId] = fullName;
     }
   }
 
-  return peoplesData;
+  return usersData;
 }
 
 function getUser(userId: string): User {
@@ -833,7 +814,7 @@ export async function exportGoogleChatData(
   userCache.clear();
   personNamesCache.clear();
   console.log(
-    '🔄 Rate limiting: Google People API and Chat API requests limited to prevent quota issues'
+    '🔄 Rate limiting: Google Directory API and Chat API requests limited to prevent quota issues'
   );
   console.log('💾 User caching: Enabled to prevent redundant API calls');
 
@@ -940,14 +921,14 @@ export async function exportGoogleChatData(
 
   // Batch fetch user names after processing all messages
   console.log(`\n👥 Found ${uniqueUserIds.size} unique users in messages`);
-  const peoplesData = await batchFetchUserNames(
+  const usersData = await batchFetchUserNames(
     Array.from(uniqueUserIds),
     logger
   );
 
   const exportData: ExportData = {
     export_timestamp: new Date().toISOString(),
-    peoples: peoplesData,
+    users: usersData,
     spaces: exportedSpaces,
   };
 
@@ -960,6 +941,15 @@ export async function exportGoogleChatData(
     logPath = await logger.writeLog();
   }
 
+  // Display users summary
+  const usersCount = Object.keys(usersData).length;
+  const usersWithNames = Object.values(usersData).filter((name) => name).length;
+  if (usersCount > 0) {
+    console.log(
+      `👥 Users: ${usersWithNames}/${usersCount} full names retrieved`
+    );
+  }
+
   displayExportSummary({
     attachmentsProcessed: totalAttachmentsProcessed,
     attachmentsSuccessful: totalAttachmentsSuccessful,
@@ -968,17 +958,6 @@ export async function exportGoogleChatData(
     logPath,
     isDryRun: dryRun,
   });
-
-  // Display peoples summary
-  const peoplesCount = Object.keys(peoplesData).length;
-  const peoplesWithNames = Object.values(peoplesData).filter(
-    (name) => name
-  ).length;
-  if (peoplesCount > 0) {
-    console.log(
-      `👥 People: ${peoplesWithNames}/${peoplesCount} full names retrieved`
-    );
-  }
 
   // Display user cache statistics
   const cacheStats = userCache.getStats();

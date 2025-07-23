@@ -1,5 +1,5 @@
 /**
- * User cache utility to prevent redundant API calls to Google People API
+ * User cache utility to prevent redundant API calls to Google Directory API
  */
 
 import type { User } from '../types/google-chat';

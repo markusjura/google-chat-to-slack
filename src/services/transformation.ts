@@ -46,7 +46,7 @@ export async function transformGoogleChatToSlack(
   const exportData = await loadExportData(inputDir);
   const { users, userMappings } = prepareUserData(
     exportData.spaces,
-    exportData.peoples
+    exportData.users
   );
   stats.users = users.length;
 
@@ -88,10 +88,10 @@ async function loadExportData(inputDir: string): Promise<ExportData> {
 
 function prepareUserData(
   spaces: Array<Space & { messages: GoogleMessage[] }>,
-  peoples: Record<string, string>
+  usersNameMap: Record<string, string>
 ) {
   const users = extractUniqueUsers(spaces);
-  const userMappings = createUserMappings(users, peoples);
+  const userMappings = createUserMappings(users, usersNameMap);
   return { users, userMappings };
 }
 
@@ -279,11 +279,11 @@ function isUserMention(annotation: any): boolean {
 
 function createUserMappings(
   users: User[],
-  peoples: Record<string, string>
+  usersNameMap: Record<string, string>
 ): UserMapping[] {
   return users.map((user) => {
-    // Get display name from peoples mapping if available
-    const fullDisplayName = peoples[user.name] || user.name;
+    // Get display name from users mapping if available
+    const fullDisplayName = usersNameMap[user.name] || user.name;
 
     return {
       google_chat_id: user.name,

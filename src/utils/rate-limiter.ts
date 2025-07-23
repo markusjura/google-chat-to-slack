@@ -181,7 +181,7 @@ export const googleChatSpaceRateLimiter = new RateLimiter({
   exponentialBackoffBase: 2,
 });
 
-// People API has much stricter rate limits for contact/profile reads
+// Directory API has much stricter rate limits for contact/profile reads
 export const googlePeopleApiRateLimiter = new RateLimiter({
   maxRequestsPerMinute: 80, // Well under 90 to provide buffer
   retryDelayMs: 2000, // Longer retry delay

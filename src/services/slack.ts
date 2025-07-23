@@ -376,8 +376,6 @@ async function processChannel(
     channelData.is_private
   );
 
-  console.log(`Using Slack channel: #${channel.name} (${channel.id})`);
-
   // Sort messages chronologically
   const sortedMessages = channelData.messages.sort(
     (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
@@ -521,8 +519,6 @@ export async function loginToSlack(): Promise<void> {
   console.log('     - chat:write (Send messages)');
   console.log('     - files:write (Upload files)');
   console.log('     - channels:read (View channels)');
-  console.log('     - users:read (View users)');
-  console.log('     - users:read.email (View user email addresses)');
   console.log('     - channels:manage (Create channels)');
   console.log('     - reactions:write (Add emoji reactions)\n');
 

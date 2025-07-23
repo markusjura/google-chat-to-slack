@@ -1,27 +1,27 @@
 import type { CommandModule } from 'yargs';
-import { loginToGoogleChat } from '../../services/google-chat';
+import { loginToGoogle } from '../../services/google-chat';
 import { loginToSlack } from '../../services/slack';
 
 type LoginArgs = {
-  service: string;
+  provider: string;
 };
 
 export const loginCommand: CommandModule<object, LoginArgs> = {
-  command: 'login <service>',
-  describe: 'Login to a chat service',
+  command: 'login <provider>',
+  describe: 'Login to a chat provider',
   builder: (yargs) =>
-    yargs.positional('service', {
-      describe: 'The chat service to log in to (e.g., google-chat, slack)',
+    yargs.positional('provider', {
+      describe: 'The chat provider to log in to (e.g., google, slack)',
       type: 'string',
       demandOption: true,
     }),
   handler: async (argv) => {
-    if (argv.service === 'google-chat') {
-      await loginToGoogleChat();
-    } else if (argv.service === 'slack') {
+    if (argv.provider === 'google') {
+      await loginToGoogle();
+    } else if (argv.provider === 'slack') {
       await loginToSlack();
     } else {
-      console.error(`Unsupported service: ${argv.service}`);
+      console.error(`Unsupported service: ${argv.provider}`);
     }
   },
 };

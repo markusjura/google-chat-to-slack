@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { CommandModule } from 'yargs';
 import {
   exportGoogleChatData,
-  loginToGoogleChat,
+  loginToGoogle,
 } from '../../services/google-chat';
 import { importSlackData, loginToSlack } from '../../services/slack';
 import { transformGoogleChatToSlack } from '../../services/transformation';
@@ -66,7 +66,7 @@ export const migrateCommand: CommandModule<object, Args> = {
       console.log('─'.repeat(authStageText.length));
 
       console.log('📝 Authenticating with Google Chat...');
-      await loginToGoogleChat();
+      await loginToGoogle();
       console.log('✅ Google Chat authentication ready');
 
       console.log('📝 Authenticating with Slack...');
