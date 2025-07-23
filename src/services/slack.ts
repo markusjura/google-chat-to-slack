@@ -413,10 +413,6 @@ async function performDryRun(slack: WebClient): Promise<void> {
   }
 }
 
-// Removed UserInfo interface - no longer needed
-
-// Removed buildUserMaps - display names are now included directly in messages
-
 async function processChannel(
   slack: WebClient,
   channelData: {
@@ -424,10 +420,9 @@ async function processChannel(
     is_private: boolean;
     messages: SlackImportMessage[];
   },
-  targetChannel: string | undefined,
   logger: Logger
 ): Promise<void> {
-  const channelName = targetChannel || channelData.name;
+  const channelName = channelData.name;
 
   console.log(`\nProcessing channel: #${channelName}`);
 
@@ -583,7 +578,7 @@ export async function loginToSlack(): Promise<void> {
 
 export async function importSlackData(
   inputPath: string,
-  targetChannel?: string,
+  channelFilters?: string | string[],
   options: ImportOptions = {}
 ): Promise<void> {
   const { dryRun = false } = options;
@@ -605,10 +600,20 @@ export async function importSlackData(
     return;
   }
 
+  // Filter channels if specified
+  const channelsToProcess = channelFilters
+    ? importData.channels.filter((channel) => {
+        const filters = Array.isArray(channelFilters)
+          ? channelFilters
+          : [channelFilters];
+        return filters.includes(channel.name);
+      })
+    : importData.channels;
+
   // Process each channel
-  for (const channelData of importData.channels) {
+  for (const channelData of channelsToProcess) {
     // biome-ignore lint/nursery/noAwaitInLoop: Channels must be processed sequentially to manage rate limits properly
-    await processChannel(slack, channelData, targetChannel, logger);
+    await processChannel(slack, channelData, logger);
   }
 
   // Display summary

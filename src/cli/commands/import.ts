@@ -17,7 +17,7 @@ function getImportDirectory(): string | undefined {
 
 type ImportArgs = {
   input?: string;
-  channel?: string;
+  channel?: string | string[];
   dryRun?: boolean;
 };
 
@@ -31,8 +31,10 @@ export const importCommand: CommandModule<object, ImportArgs> = {
         type: 'string',
       })
       .option('channel', {
-        describe: 'Target Slack channel name for import',
+        describe:
+          'Filter to import only specified channels (can be used multiple times)',
         type: 'string',
+        array: true,
       })
       .option('dry-run', {
         describe: 'Test connection, create/delete test channel and message',
@@ -62,6 +64,37 @@ export const importCommand: CommandModule<object, ImportArgs> = {
       }
       inputDir = importDir;
       console.log(`Using import directory: ${inputDir}`);
+    }
+
+    // Validate channel filters if provided
+    if (argv.channel && argv.channel.length > 0) {
+      try {
+        const fs = require('node:fs');
+        const importDataPath = path.join(inputDir, 'import.json');
+
+        if (!fs.existsSync(importDataPath)) {
+          console.error('Import data not found. Please run transform first.');
+          process.exit(1);
+        }
+
+        const importData = JSON.parse(fs.readFileSync(importDataPath, 'utf-8'));
+        const availableChannels = importData.channels.map((ch: any) => ch.name);
+        const channelArray = Array.isArray(argv.channel)
+          ? argv.channel
+          : [argv.channel];
+        const invalidChannels = channelArray.filter(
+          (ch: string) => !availableChannels.includes(ch)
+        );
+
+        if (invalidChannels.length > 0) {
+          console.error(`Invalid channel(s): ${invalidChannels.join(', ')}`);
+          console.error(`Available channels: ${availableChannels.join(', ')}`);
+          process.exit(1);
+        }
+      } catch (error) {
+        console.error('Failed to validate channels:', error);
+        process.exit(1);
+      }
     }
 
     try {
