@@ -127,25 +127,41 @@ async function processChannels(
     channels.push(slackChannel);
 
     stats.channels++;
-    stats.messages += slackChannel.messages.length;
-
-    for (const message of slackChannel.messages) {
-      if (message.thread_ts) {
-        stats.threads++;
-      }
-      if (message.attachments) {
-        stats.attachments += message.attachments.length;
-      }
-      if (message.reactions) {
-        stats.reactions += message.reactions.length;
-      }
-      if (message.mentions) {
-        stats.mentions += message.mentions.length;
-      }
-    }
+    updateStatsForChannel(slackChannel, stats);
   }
 
   return { channels, channelMappings };
+}
+
+function updateStatsForChannel(
+  slackChannel: SlackImportChannel,
+  stats: TransformStats
+): void {
+  // Count all messages (no nesting anymore)
+  for (const message of slackChannel.messages) {
+    stats.messages++; // Count each message
+
+    if (message.threadId) {
+      stats.threads++;
+    }
+
+    updateStatsForMessage(message, stats);
+  }
+}
+
+function updateStatsForMessage(
+  message: SlackImportMessage,
+  stats: TransformStats
+): void {
+  if (message.attachments) {
+    stats.attachments += message.attachments.length;
+  }
+  if (message.reactions) {
+    stats.reactions += message.reactions.length;
+  }
+  if (message.mentions) {
+    stats.mentions += message.mentions.length;
+  }
 }
 
 function createSlackImportData(
@@ -318,16 +334,12 @@ async function transformChannel(
   dryRun: boolean,
   logger: Logger
 ): Promise<SlackImportChannel> {
-  // Preserve message order from export to maintain conversation flow
-  const threadMap = new Map<string, string>();
-
   const slackMessages = await transformMessages(
     space.messages,
     userMappings,
     inputDir,
     outputDir,
     dryRun,
-    threadMap,
     logger
   );
 
@@ -340,32 +352,22 @@ async function transformMessages(
   inputDir: string,
   outputDir: string,
   dryRun: boolean,
-  threadMap: Map<string, string>,
   logger: Logger
 ): Promise<SlackImportMessage[]> {
-  const messagePromises = messages.map((message) => {
-    return transformSingleMessage(
-      message,
-      userMappings,
-      inputDir,
-      outputDir,
-      dryRun,
-      threadMap,
-      logger
-    );
-  });
+  const messagePromises = messages.map((message) =>
+    transformMessage(message, userMappings, inputDir, outputDir, dryRun, logger)
+  );
 
-  const results = await Promise.all(messagePromises);
-  return results.filter(Boolean) as SlackImportMessage[];
+  const transformedMessages = await Promise.all(messagePromises);
+  return transformedMessages.filter(Boolean) as SlackImportMessage[];
 }
 
-async function transformSingleMessage(
+async function transformMessage(
   message: GoogleMessage,
   userMappings: UserMapping[],
   inputDir: string,
   outputDir: string,
   dryRun: boolean,
-  threadMap: Map<string, string>,
   logger: Logger
 ): Promise<SlackImportMessage | undefined> {
   // Get display name for this message
@@ -374,7 +376,8 @@ async function transformSingleMessage(
     return;
   }
 
-  const threadTs = getThreadTimestamp(message, threadMap);
+  // Get threadId from Google Chat thread.name
+  const threadId = message.thread?.name;
 
   const [attachments, reactions, mentions] = await Promise.all([
     transformAttachments(
@@ -392,28 +395,11 @@ async function transformSingleMessage(
     text: message.text || message.formattedText || '',
     display_name: displayName,
     timestamp: message.createTime,
-    thread_ts: threadTs,
+    threadId,
     attachments: attachments.length > 0 ? attachments : undefined,
     reactions: reactions.length > 0 ? reactions : undefined,
     mentions: mentions.length > 0 ? mentions : undefined,
   };
-}
-
-function getThreadTimestamp(
-  message: GoogleMessage,
-  threadMap: Map<string, string>
-): string | undefined {
-  if (!message.thread) {
-    return;
-  }
-
-  if (threadMap.has(message.thread.name)) {
-    return threadMap.get(message.thread.name);
-  }
-
-  // First message in a thread becomes the parent - use its timestamp as thread identifier
-  threadMap.set(message.thread.name, message.createTime);
-  return message.createTime;
 }
 
 function createSlackChannel(

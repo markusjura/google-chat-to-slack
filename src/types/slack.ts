@@ -346,7 +346,7 @@ export interface SlackImportMessage {
   text: string;
   display_name: string; // User's display name for the message
   timestamp: string; // ISO string, will be used for ordering
-  thread_ts?: string; // Parent message timestamp for thread replies
+  threadId?: string; // Thread identifier from Google Chat (thread.name)
   attachments?: SlackImportAttachment[];
   reactions?: Array<{
     name: string;
@@ -356,6 +356,7 @@ export interface SlackImportMessage {
   mentions?: Array<{
     display_name: string;
   }>;
+  thread_ts?: string; // Slack thread timestamp - used internally during import
 }
 
 export interface SlackImportAttachment {

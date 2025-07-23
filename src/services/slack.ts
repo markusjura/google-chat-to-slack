@@ -11,10 +11,6 @@ import type {
 } from '../types/slack';
 import { Logger } from '../utils/logger';
 import { ProgressBar } from '../utils/progress-bar';
-import {
-  slackChatRateLimiter,
-  slackTier3RateLimiter,
-} from '../utils/rate-limiter';
 import { getToken, setToken } from '../utils/token-manager';
 
 // Interface for message arguments to replace 'any' type
@@ -176,62 +172,147 @@ async function findOrCreateSlackChannel(
   return channel;
 }
 
-async function uploadSlackAttachment(
+async function uploadAndPostMessageWithAttachments(
   slack: WebClient,
-  attachment: SlackImportAttachment,
+  channelId: string,
+  messageText: string,
+  attachments: SlackImportAttachment[],
+  threadTs: string | undefined,
   logger: Logger
 ): Promise<string | undefined> {
   try {
-    // Read file content
-    const fileContent = await readFile(attachment.local_path);
+    // Step 1: Get upload URLs for all files
+    const uploadPromises = attachments.map(async (attachment) => {
+      const fileContent = await readFile(attachment.local_path);
+      const uploadUrlResult = await slack.files.getUploadURLExternal({
+        filename: attachment.filename,
+        length: fileContent.length,
+        alt_text: attachment.alt_text,
+      });
 
-    // Step 1: Get upload URL
-    const uploadUrlResult = await slack.files.getUploadURLExternal({
-      filename: attachment.filename,
-      length: fileContent.length,
-      alt_text: attachment.alt_text,
+      if (
+        !(
+          uploadUrlResult.ok &&
+          uploadUrlResult.upload_url &&
+          uploadUrlResult.file_id
+        )
+      ) {
+        throw new Error(
+          `Failed to get upload URL for ${attachment.filename}: ${uploadUrlResult.error}`
+        );
+      }
+
+      return {
+        attachment,
+        fileContent,
+        uploadUrl: uploadUrlResult.upload_url,
+        fileId: uploadUrlResult.file_id,
+      };
     });
 
-    if (
-      !(
-        uploadUrlResult.ok &&
-        uploadUrlResult.upload_url &&
-        uploadUrlResult.file_id
-      )
-    ) {
-      throw new Error(`Failed to get upload URL: ${uploadUrlResult.error}`);
+    const uploadData = await Promise.all(uploadPromises);
+
+    // Step 2: Upload all files to their URLs
+    const fileUploadPromises = uploadData.map(
+      async ({ fileContent, uploadUrl, attachment }) => {
+        const uploadResponse = await fetch(uploadUrl, {
+          method: 'POST',
+          body: fileContent as BodyInit,
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(
+            `File upload failed for ${attachment.filename}: ${uploadResponse.statusText}`
+          );
+        }
+      }
+    );
+
+    await Promise.all(fileUploadPromises);
+
+    // Step 3: Complete the upload and post message with attachments
+    const completeParams: any = {
+      files: uploadData.map(({ fileId, attachment }) => ({
+        id: fileId,
+        title: attachment.title || attachment.filename,
+      })),
+      channel_id: channelId,
+      initial_comment: messageText,
+    };
+
+    if (threadTs) {
+      completeParams.thread_ts = threadTs;
     }
 
-    // Step 2: Upload file to the URL
-    const uploadResponse = await fetch(uploadUrlResult.upload_url, {
-      method: 'POST',
-      body: fileContent as BodyInit,
-    });
-
-    if (!uploadResponse.ok) {
-      throw new Error(`File upload failed: ${uploadResponse.statusText}`);
-    }
-
-    // Step 3: Complete the upload
-    const completeResult = await slack.files.completeUploadExternal({
-      files: [
-        {
-          id: uploadUrlResult.file_id,
-          title: attachment.title || attachment.filename,
-        },
-      ],
-    });
+    const completeResult =
+      await slack.files.completeUploadExternal(completeParams);
 
     if (!completeResult.ok) {
       throw new Error(`Failed to complete upload: ${completeResult.error}`);
     }
 
-    return uploadUrlResult.file_id;
+    return (completeResult as any).ts;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.addError('file_upload', attachment.filename, errorMessage);
+    logger.addWarning(
+      'file_upload',
+      `${attachments.length} attachments`,
+      `Failed to upload attachments: ${errorMessage}`
+    );
     return;
   }
+}
+
+async function postTextMessage(
+  slack: WebClient,
+  channelId: string,
+  messageText: string,
+  threadTs: string | undefined
+): Promise<string> {
+  const messageArgs: SlackMessageArgs = {
+    channel: channelId,
+    text: messageText,
+  };
+
+  if (threadTs) {
+    messageArgs.thread_ts = threadTs;
+  }
+
+  const result = await slack.chat.postMessage(messageArgs);
+
+  if (!result.ok) {
+    throw new Error(`Failed to post message: ${result.error}`);
+  }
+
+  return result.ts as string;
+}
+
+async function addReactionsToMessage(
+  slack: WebClient,
+  channelId: string,
+  messageTs: string,
+  reactions: { name: string }[],
+  logger: Logger
+): Promise<void> {
+  const reactionPromises = reactions.map(async (reaction) => {
+    try {
+      await slack.reactions.add({
+        channel: channelId,
+        timestamp: messageTs,
+        name: reaction.name,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      logger.addWarning(
+        'reaction_add',
+        `${reaction.name} on message`,
+        errorMessage
+      );
+    }
+  });
+
+  await Promise.all(reactionPromises);
 }
 
 async function postSlackMessage(
@@ -241,74 +322,49 @@ async function postSlackMessage(
   logger: Logger
 ): Promise<string | undefined> {
   try {
-    // Upload attachments first if any
-    const fileIds: string[] = [];
-    if (message.attachments) {
-      const uploadPromises = message.attachments.map(async (attachment) => {
-        const fileId = await uploadSlackAttachment(slack, attachment, logger);
-        return fileId;
-      });
-      const uploadResults = await Promise.all(uploadPromises);
-      fileIds.push(...(uploadResults.filter(Boolean) as string[]));
-    }
-
-    // Format message text with sender attribution at the top
-    const timestamp = new Date(message.timestamp).toLocaleString();
+    const timestampText = message.timestamp
+      ? ` at _${new Date(message.timestamp).toLocaleString()}_`
+      : '';
     const senderName = message.display_name || 'Unknown User';
+    const messageText = `*${senderName}*${timestampText}\n\n${message.text || ''}`;
 
-    const messageText = `*${senderName}* at _${timestamp}_\n\n${message.text}`;
+    // Try to post with attachments first, fall back to text-only if attachments fail
+    const messageTs = message.attachments?.length
+      ? (await uploadAndPostMessageWithAttachments(
+          slack,
+          channelId,
+          messageText,
+          message.attachments,
+          message.thread_ts,
+          logger
+        )) ||
+        (await postTextMessage(
+          slack,
+          channelId,
+          messageText,
+          message.thread_ts
+        ))
+      : await postTextMessage(slack, channelId, messageText, message.thread_ts);
 
-    // Post message - create properly typed arguments
-    const messageArgs: SlackMessageArgs = {
-      channel: channelId,
-      text: messageText,
-    };
-
-    if (message.thread_ts) {
-      messageArgs.thread_ts = message.thread_ts;
-    }
-
-    // Note: Cannot override bot name, timestamp, or avatar via Slack API
-    // All attribution is now handled in the message text above
-
-    const result = await slack.chat.postMessage(messageArgs);
-
-    if (!result.ok) {
-      throw new Error(`Failed to post message: ${result.error}`);
-    }
-
-    const messageTs = result.ts as string;
-
-    // Add reactions if any exist
-    if (message.reactions && message.reactions.length > 0) {
-      const reactionPromises = message.reactions.map((reaction) =>
-        slackTier3RateLimiter.execute(async () => {
-          try {
-            await slack.reactions.add({
-              channel: channelId,
-              timestamp: messageTs,
-              name: reaction.name,
-            });
-          } catch (error) {
-            // Log reaction errors but don't fail the entire message import
-            const errorMessage =
-              error instanceof Error ? error.message : String(error);
-            logger.addWarning(
-              'reaction_add',
-              `${reaction.name} on message`,
-              errorMessage
-            );
-          }
-        })
+    // Add reactions if present
+    if (message.reactions?.length && messageTs) {
+      await addReactionsToMessage(
+        slack,
+        channelId,
+        messageTs,
+        message.reactions,
+        logger
       );
-
-      await Promise.all(reactionPromises);
     }
 
     return messageTs;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.addError('message_post', message.display_name, errorMessage);
+    logger.addError(
+      'message_post',
+      message.display_name || 'Unknown User',
+      errorMessage
+    );
     return;
   }
 }
@@ -370,42 +426,38 @@ async function processChannel(
     channelData.is_private
   );
 
-  // Preserve message order from export to maintain conversation flow
   // Process messages with progress bar
   const progressBar = new ProgressBar(
     channelData.messages.length,
     `Importing messages to #${channel.name}`
   );
 
-  const threadMap = new Map<string, string>(); // Maps parent message timestamps to Slack message IDs for threading
-
-  // Process all messages sequentially to preserve export order and handle threading correctly
+  // Map threadId to first message's Slack timestamp for threading
+  const threadMap = new Map<string, string>();
   let processedCount = 0;
 
   for (const message of channelData.messages) {
-    // Map thread timestamp if this is a reply
     let threadTs: string | undefined;
-    if (message.thread_ts) {
-      threadTs = threadMap.get(message.thread_ts);
-      // Only thread the message if parent was successfully posted to Slack
+
+    // Check if this message belongs to a thread
+    if (message.threadId) {
+      threadTs = threadMap.get(message.threadId);
     }
 
+    // Post message with thread_ts if it's a reply
     const messageWithThread = { ...message, thread_ts: threadTs };
 
     // biome-ignore lint/nursery/noAwaitInLoop: Messages must be processed sequentially to preserve order and threading
-    const messageTs = await slackChatRateLimiter.execute(async () => {
-      return await postSlackMessage(
-        slack,
-        channel.id,
-        messageWithThread,
-        logger
-      );
-    });
+    const messageTs = await postSlackMessage(
+      slack,
+      channel.id,
+      messageWithThread,
+      logger
+    );
 
-    // Save Slack timestamp for parent messages so replies can reference them
-    // Parent messages have thread_ts equal to their own timestamp
-    if (messageTs && message.thread_ts === message.timestamp) {
-      threadMap.set(message.timestamp, messageTs);
+    // If this is the first message in a thread, save its Slack timestamp
+    if (messageTs && message.threadId && !threadMap.has(message.threadId)) {
+      threadMap.set(message.threadId, messageTs);
     }
 
     processedCount++;
