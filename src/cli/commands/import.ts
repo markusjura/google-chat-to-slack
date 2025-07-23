@@ -37,6 +37,17 @@ export const importCommand: CommandModule<object, ImportArgs> = {
       .option('dry-run', {
         describe: 'Test connection, create/delete test channel and message',
         type: 'boolean',
+      })
+      .strict()
+      .fail((msg, err, yargsInstance) => {
+        if (msg) {
+          console.error(`Error: ${msg}`);
+          console.error('');
+          yargsInstance.showHelp();
+        } else if (err) {
+          console.error(`Error: ${err.message}`);
+        }
+        process.exit(1);
       }),
   handler: async (argv) => {
     // Determine input directory

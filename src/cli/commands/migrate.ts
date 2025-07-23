@@ -42,7 +42,18 @@ export const migrateCommand: CommandModule<object, Args> = {
         '$0 migrate --channel general',
         "Migrate only the 'general' space to 'general' Slack channel"
       )
-      .example('$0 migrate --dry-run', 'Test the complete migration pipeline');
+      .example('$0 migrate --dry-run', 'Test the complete migration pipeline')
+      .strict()
+      .fail((msg, err, yargsInstance) => {
+        if (msg) {
+          console.error(`Error: ${msg}`);
+          console.error('');
+          yargsInstance.showHelp();
+        } else if (err) {
+          console.error(`Error: ${err.message}`);
+        }
+        process.exit(1);
+      });
   },
   handler: async (args) => {
     try {

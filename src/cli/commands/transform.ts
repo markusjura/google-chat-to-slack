@@ -38,6 +38,17 @@ export const transformCommand: CommandModule<object, TransformArgs> = {
       .option('dry-run', {
         describe: 'Show transformation statistics without writing files',
         type: 'boolean',
+      })
+      .strict()
+      .fail((msg, err, yargsInstance) => {
+        if (msg) {
+          console.error(`Error: ${msg}`);
+          console.error('');
+          yargsInstance.showHelp();
+        } else if (err) {
+          console.error(`Error: ${err.message}`);
+        }
+        process.exit(1);
       }),
   handler: async (argv) => {
     // Determine input directory

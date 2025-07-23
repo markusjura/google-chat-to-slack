@@ -26,6 +26,17 @@ export const exportCommand: CommandModule<object, ExportArgs> = {
       .option('dry-run', {
         describe: 'Perform a dry run, exporting only one message per space',
         type: 'boolean',
+      })
+      .strict()
+      .fail((msg, err, yargsInstance) => {
+        if (msg) {
+          console.error(`Error: ${msg}`);
+          console.error('');
+          yargsInstance.showHelp();
+        } else if (err) {
+          console.error(`Error: ${err.message}`);
+        }
+        process.exit(1);
       }),
   handler: async (argv) => {
     const outputDir = path.resolve(argv.output);
