@@ -256,13 +256,7 @@ async function postSlackMessage(
     const timestamp = new Date(message.timestamp).toLocaleString();
     const senderName = message.display_name || 'Unknown User';
 
-    let messageText: string;
-
-    if (message.text.trim()) {
-      messageText = `*${senderName}* at _${timestamp}_\n\n${message.text}`;
-    } else {
-      messageText = `*${senderName}* at _${timestamp}_\n\n_[No text content]_`;
-    }
+    const messageText = `*${senderName}* at _${timestamp}_\n\n${message.text}`;
 
     // Post message - create properly typed arguments
     const messageArgs: SlackMessageArgs = {
