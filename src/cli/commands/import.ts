@@ -41,11 +41,6 @@ export const importCommand: CommandModule<object, ImportArgs> = {
         describe: 'Test connection, create/delete test channel and message',
         type: 'boolean',
       })
-      .option('clean', {
-        describe:
-          'Delete and recreate channels before importing (requires channels:manage scope)',
-        type: 'boolean',
-      })
       .strict()
       .fail((msg, err, yargsInstance) => {
         if (msg) {
@@ -106,7 +101,6 @@ export const importCommand: CommandModule<object, ImportArgs> = {
     try {
       await importSlackData(inputDir, argv.channel, {
         dryRun: argv.dryRun,
-        clean: argv.clean,
       });
     } catch (error) {
       console.error('Import failed:', error);
