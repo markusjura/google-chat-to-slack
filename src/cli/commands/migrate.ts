@@ -13,6 +13,7 @@ interface Args {
   channel?: string;
   output?: string;
   'dry-run'?: boolean;
+  'channel-prefix'?: string;
 }
 
 export const migrateCommand: CommandModule<object, Args> = {
@@ -37,12 +38,20 @@ export const migrateCommand: CommandModule<object, Args> = {
           'Perform dry-run: minimal export, show transform stats, test Slack connection',
         default: false,
       })
+      .option('channel-prefix', {
+        type: 'string',
+        describe: 'Prefix to add to channel names during Slack import',
+      })
       .example('$0 migrate', 'Migrate all Google Chat spaces to Slack')
       .example(
         '$0 migrate --channel general',
         "Migrate only the 'general' space to 'general' Slack channel"
       )
       .example('$0 migrate --dry-run', 'Test the complete migration pipeline')
+      .example(
+        '$0 migrate --channel-prefix "gchat-"',
+        'Migrate with "gchat-" prefix (e.g., "general" → "gchat-general")'
+      )
       .strict()
       .fail((msg, err, yargsInstance) => {
         if (msg) {
@@ -57,7 +66,12 @@ export const migrateCommand: CommandModule<object, Args> = {
   },
   handler: async (args) => {
     try {
-      const { channel, output = 'data', 'dry-run': isDryRun } = args;
+      const {
+        channel,
+        output = 'data',
+        'dry-run': isDryRun,
+        'channel-prefix': channelPrefix,
+      } = args;
 
       const exportDir = path.join(output, 'export');
       const importDir = path.join(output, 'import');
@@ -126,7 +140,10 @@ export const migrateCommand: CommandModule<object, Args> = {
       console.log(importText);
       console.log('═'.repeat(importText.length));
 
-      await importSlackData(importDir, channel, { dryRun: isDryRun });
+      await importSlackData(importDir, channel, {
+        dryRun: isDryRun,
+        channelPrefix,
+      });
 
       console.log('✅ Import completed successfully');
       console.log('');

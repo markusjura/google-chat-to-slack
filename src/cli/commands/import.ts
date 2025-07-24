@@ -41,6 +41,10 @@ export const importCommand: CommandModule<object, ImportArgs> = {
         describe: 'Test connection, create/delete test channel and message',
         type: 'boolean',
       })
+      .option('channel-prefix', {
+        describe: 'Prefix to add to channel names during import',
+        type: 'string',
+      })
       .strict()
       .fail((msg, err, yargsInstance) => {
         if (msg) {
@@ -101,6 +105,7 @@ export const importCommand: CommandModule<object, ImportArgs> = {
     try {
       await importSlackData(inputDir, argv.channel, {
         dryRun: argv.dryRun,
+        channelPrefix: argv.channelPrefix as string | undefined,
       });
     } catch (error) {
       console.error('Import failed:', error);

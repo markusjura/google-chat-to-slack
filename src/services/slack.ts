@@ -22,6 +22,7 @@ interface SlackMessageArgs {
 
 interface ImportOptions {
   dryRun?: boolean;
+  channelPrefix?: string;
 }
 
 // Function declarations (following Declaration Before Use principle)
@@ -420,11 +421,17 @@ async function processChannel(
     is_private: boolean;
     messages: SlackImportMessage[];
   },
-  logger: Logger
+  logger: Logger,
+  channelPrefix?: string
 ): Promise<void> {
-  const channelName = channelData.name;
+  const originalChannelName = channelData.name;
+  const channelName = channelPrefix
+    ? `${channelPrefix}${originalChannelName}`
+    : originalChannelName;
 
-  console.log(`\nProcessing channel: #${channelName}`);
+  console.log(
+    `\nProcessing channel: #${originalChannelName}${channelPrefix ? ` → #${channelName}` : ''}`
+  );
 
   // Find or create channel
   const channel = await findOrCreateSlackChannel(
@@ -581,7 +588,7 @@ export async function importSlackData(
   channelFilters?: string | string[],
   options: ImportOptions = {}
 ): Promise<void> {
-  const { dryRun = false } = options;
+  const { dryRun = false, channelPrefix } = options;
   const logger = new Logger('Import');
   const slack = await getSlackWebClient();
 
@@ -613,7 +620,7 @@ export async function importSlackData(
   // Process each channel
   for (const channelData of channelsToProcess) {
     // biome-ignore lint/nursery/noAwaitInLoop: Channels must be processed sequentially to manage rate limits properly
-    await processChannel(slack, channelData, logger);
+    await processChannel(slack, channelData, logger, channelPrefix);
   }
 
   // Display summary
