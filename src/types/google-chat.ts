@@ -11,7 +11,8 @@ export interface GoogleMessage {
   name: string;
   sender: User;
   createTime: string;
-  text: string; // Now contains the formatted text from Google Chat API's formattedText field
+  text: string;
+  formattedText?: string;
   thread?: {
     name: string;
   };

@@ -393,7 +393,7 @@ async function transformMessage(
   ]);
 
   return {
-    text: message.text,
+    text: message.formattedText || message.text,
     display_name: displayName,
     timestamp: message.createTime,
     threadId,
