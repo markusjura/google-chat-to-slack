@@ -180,7 +180,7 @@ async function uploadAndPostMessageWithAttachments(
   attachments: SlackImportAttachment[],
   threadTs: string | undefined,
   logger: Logger
-): Promise<string> {
+): Promise<void> {
   // Step 1: Process each file sequentially to maintain order
   const uploadData: Array<{
     attachment: SlackImportAttachment;
@@ -262,14 +262,18 @@ async function uploadAndPostMessageWithAttachments(
     throw new Error(`Failed to complete upload: ${completeResult.error}`);
   }
 
-  return (completeResult as any).ts;
+  // Wait to ensure Slack has processed the upload. Important to preserve message order in threads.
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+
+  // Note: This function is used for thread replies, so we don't need to return a thread_ts
+  return;
 }
 
 async function postTextMessage(
   slack: WebClient,
   channelId: string,
   messageText: string,
-  threadTs: string | undefined
+  threadTs?: string
 ): Promise<string> {
   const messageArgs: SlackMessageArgs = {
     channel: channelId,
@@ -323,6 +327,7 @@ async function postSlackMessage(
   slack: WebClient,
   channelId: string,
   message: SlackImportMessage,
+  isTopLevelMessage: boolean,
   logger: Logger
 ): Promise<string | undefined> {
   try {
@@ -336,12 +341,30 @@ async function postSlackMessage(
       ? `*${senderName}*${timestampText}\n\n${message.text}`
       : `*${senderName}*${timestampText}`;
 
-    // Post message with or without attachments
     let messageTs: string | undefined;
 
-    if (message.attachments?.length) {
-      // Post with attachments
-      messageTs = await uploadAndPostMessageWithAttachments(
+    // Handle top-level messages with attachments differently
+    if (isTopLevelMessage && message.attachments?.length) {
+      // Step 1: Post text message first to get thread_ts
+      messageTs = await postTextMessage(
+        slack,
+        channelId,
+        messageText,
+        message.thread_ts
+      );
+
+      // Step 2: Post attachments as a reply to the text message
+      await uploadAndPostMessageWithAttachments(
+        slack,
+        channelId,
+        messageText,
+        message.attachments,
+        messageTs,
+        logger
+      );
+    } else if (message.attachments?.length) {
+      // Sub-message with attachments: use existing thread_ts
+      await uploadAndPostMessageWithAttachments(
         slack,
         channelId,
         messageText,
@@ -349,6 +372,8 @@ async function postSlackMessage(
         message.thread_ts,
         logger
       );
+      // For sub-messages with attachments, we don't return a messageTs since it's not the thread parent
+      messageTs = undefined;
     } else {
       // No attachments, just post text
       messageTs = await postTextMessage(
@@ -359,7 +384,7 @@ async function postSlackMessage(
       );
     }
 
-    // Add reactions if present
+    // Add reactions if present and we have a messageTs
     if (message.reactions?.length && messageTs) {
       await addReactionsToMessage(
         slack,
@@ -452,10 +477,20 @@ async function processChannel(
 
   for (const message of channelData.messages) {
     let threadTs: string | undefined;
+    let isTopLevelMessage = false;
 
     // Check if this message belongs to a thread
     if (message.threadId) {
       threadTs = threadMap.get(message.threadId);
+
+      // Use threadReply field from Google Chat API if available for more robust detection
+      if (message.threadReply) {
+        // threadReply: false = top-level message, threadReply: true = reply
+        isTopLevelMessage = !message.threadReply;
+      } else {
+        // Fallback: This is a parent message if we haven't seen this threadId before
+        isTopLevelMessage = !threadMap.has(message.threadId);
+      }
     }
 
     // Post message with thread_ts if it's a reply
@@ -466,6 +501,7 @@ async function processChannel(
       slack,
       channel.id,
       messageWithThread,
+      isTopLevelMessage,
       logger
     );
 

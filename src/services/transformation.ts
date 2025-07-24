@@ -397,6 +397,7 @@ async function transformMessage(
     display_name: displayName,
     timestamp: message.createTime,
     threadId,
+    threadReply: message.threadReply,
     attachments: attachments.length > 0 ? attachments : undefined,
     reactions: reactions.length > 0 ? reactions : undefined,
     mentions: mentions.length > 0 ? mentions : undefined,

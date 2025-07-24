@@ -347,6 +347,7 @@ export interface SlackImportMessage {
   display_name: string; // User's display name for the message
   timestamp: string; // ISO string, will be used for ordering
   threadId?: string; // Thread identifier from Google Chat (thread.name)
+  threadReply?: boolean; // When true, message is a response in reply thread; when false, it's a top-level message
   attachments?: SlackImportAttachment[];
   reactions?: Array<{
     name: string;

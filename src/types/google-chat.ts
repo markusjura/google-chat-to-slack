@@ -21,6 +21,7 @@ export interface GoogleMessage {
   attachment?: GoogleAttachment[];
   emojiReactionSummaries?: EmojiReactionSummary[];
   annotations?: Annotation[];
+  threadReply?: boolean; // When true, message is a response in reply thread; when false, it's a top-level message
 }
 
 export interface ExportData {
