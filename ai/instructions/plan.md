@@ -77,10 +77,10 @@ The migration tool will be structured with the following commands:
   - **`--dry-run` flag:** Uses the same implementation logic but limits scope (1 message per space, 1 space max) to quickly test API connectivity and verify the full export process without downloading excessive data.
 
 - **`transform`**:
-    - Reads the exported source data file.
-    - Transforms it into the target format required by the destination service (e.g., Slack).
-    - Saves the transformed data to a new intermediate file.
-    - **`--dry-run` flag:** Performs the transformation and prints statistics about the transformed data without writing to a file.
+  - Reads the exported source data file.
+  - Transforms it into the target format required by the destination service (e.g., Slack).
+  - Saves the transformed data to a new intermediate file.
+  - **`--dry-run` flag:** Performs the transformation and prints statistics about the transformed data without writing to a file.
 
 - **`import`**:
   - Reads the **transformed** intermediate data files.
@@ -158,7 +158,7 @@ The project will adhere to the following file structure, which is designed for c
 ```
 .
 ├── bin/
-│   └── chatmig.ts              # Main CLI entry point
+│   └── googletoslack.ts        # Main CLI entry point
 ├── src/
 │   ├── __tests__/              # Vitest unit and integration tests
 │   │   ├── services/
@@ -204,17 +204,17 @@ This plan breaks the project into four main phases. For each step, implement the
 
 **Objective:** Build the commands and logic to export chat history from Google Chat, preserving the source data format.
 
-1.  **✅ Implement `login` and `logout` for Google Chat**
+1. **✅ Implement `login` and `logout` for Google Chat**
     - **Action:** Implement the `login <service>` and `logout <service>` commands. For this phase, add support for the `google-chat` service. `login` will handle the OAuth 2.0 flow and store credentials securely. `logout` will clear them.
     - **Status:** COMPLETED - OAuth 2.0 flow implemented with secure token storage using system keychain.
     - **Verification:** Commands `pnpm start login google-chat` and `pnpm start logout google-chat` are working correctly.
 
-2.  **✅ Implement `export` Command**
+2. **✅ Implement `export` Command**
     - **Action:** Create the `export` command for Google Chat. It should accept `--space`, `--output`, and `--dry-run` arguments.
     - **Status:** COMPLETED - Command implemented with all required arguments.
     - **Verification:** `pnpm start export --help` shows correct argument definitions.
 
-3.  **✅ Implement Data Fetching Logic**
+3. **✅ Implement Data Fetching Logic**
     - **Action:** Implement the service logic to list a user's spaces and fetch all messages for a given space, including handling API pagination, attachment downloads, and avatar downloads.
     - **Status:** COMPLETED - Full implementation including:
       - Space listing with pagination
@@ -224,7 +224,7 @@ This plan breaks the project into four main phases. For each step, implement the
       - Proper authentication scopes for all required APIs
     - **Additional Features:** Avatar downloads, user profile fetching, local file management.
 
-4.  **✅ Finalize Export and Test End-to-End**
+4. **✅ Finalize Export and Test End-to-End**
     - **Action:** Connect the data fetching logic to the `export` command, writing the complete export data including downloaded files to the specified output directory.
     - **Status:** COMPLETED - End-to-end export functionality working including:
       - Directory structure creation (`attachments/`, `avatars/`)
@@ -239,17 +239,17 @@ This plan breaks the project into four main phases. For each step, implement the
 
 **Objective:** Build the command to transform the exported Google Chat data into the format required for Slack.
 
-1.  **Implement `transform` Command**
+1. **Implement `transform` Command**
     - **Action:** Create the `transform` command. It should accept `--input` and `--output` arguments with clean defaults.
     - **Default Behavior:** `--input` defaults to `data/export/`, `--output` defaults to `data/import/` (replaces existing directories)
     - **Verification:** Run `pnpm start transform --help` to ensure arguments are correctly defined.
 
-2.  **Implement Data Transformation Logic**
+2. **Implement Data Transformation Logic**
     - **Action:** Create the data transformation service that converts Google Chat export data (including `export.json`, `attachments/`, `avatars/` directories) into the Slack import format using the new 2025 Slack API types.
     - **Features:** Handle user mapping by email, channel name normalization, thread preservation, attachment processing, emoji reactions, and user mentions.
     - **Verification:** Write focused unit tests to validate the transformation for different data structures (text, attachments, threads, reactions, mentions).
 
-3.  **Finalize Transform and Test End-to-End**
+3. **Finalize Transform and Test End-to-End**
     - **Action:** Connect the transformation logic to the `transform` command, reading the complete export directory structure and writing the Slack import format with preserved file references.
     - **Verification:** Perform a manual end-to-end test by running `pnpm start transform` (uses clean defaults: `data/export/` → `data/import/`). Inspect the output directory and JSON file to confirm structure and content are correct for Slack import using 2025 APIs.
 
@@ -257,38 +257,38 @@ This plan breaks the project into four main phases. For each step, implement the
 
 **Objective:** Build the commands and logic to import data from the **transformed** `import.json` file into a Slack workspace.
 
-1.  **Enhance `login` and `logout` for Slack**
+1. **Enhance `login` and `logout` for Slack**
     - **Action:** Extend the `login <service>` and `logout <service>` commands to handle the `slack` service, managing its API credentials.
     - **Verification:** Update unit tests for `login`/`logout` to cover Slack. Manually run `pnpm start login slack` and `pnpm start logout slack`.
 
-2.  **Implement `import` Command**
+2. **Implement `import` Command**
     - **Action:** Create the `import` command. It will only support importing to Slack for now. It should accept `--input` and `--channel` arguments. If not specified, we use our defaults.
     - **Verification:** Run `pnpm start import --help` to ensure arguments are correctly defined.
 
-3.  **Implement Import Logic**
+3. **Implement Import Logic**
     - **Action:** Implement the service logic to:
-      1.  Read and parse the `data/import/import.json` data file.
-      2.  Map users to Slack users (e.g., by email) including the avatar.
-      3.  Find or create the target Slack channel.
-      4.  Post messages to the channel with attachments, respecting Slack's rate limits .
+      1. Read and parse the `data/import/import.json` data file.
+      2. Map users to Slack users (e.g., by email) including the avatar.
+      3. Find or create the target Slack channel.
+      4. Post messages to the channel with attachments, respecting Slack's rate limits .
     - **Verification:** Run `pnpm start import --space competition` to test the import. Make sure that `export` and `transform` have been executed beforehand.
 
 ## Phase 4: Combined Migration Command
 
 **Objective:** Create a single, seamless command to orchestrate the entire migration from a source to a destination.
 
-1.  **Implement `migrate` Command**
+1. **Implement `migrate` Command**
     - **Action:** Create the top-level `migrate` command that accepts arguments for the source, destination, and any other required parameters.
     - **Verification:** Run `migrate --help` to ensure all arguments are correctly defined.
 
-2.  **Implement Migration Orchestration**
+2. **Implement Migration Orchestration**
     - **Action:** Implement the orchestration logic that reuses the services from the previous phases. The data should be passed in-memory between steps (`export` -> `transform` -> `import`) without writing to temporary files.
     - **Verification:** Write unit tests for the orchestration logic, mocking the underlying services.
 
-3.  **Add User Feedback**
+3. **Add User Feedback**
     - **Action:** Enhance the command to provide real-time feedback, such as a progress bar and a final summary report.
     - **Verification:** Manually run the command and confirm that progress is displayed and a summary is printed upon completion.
 
-4.  **Final End-to-End Test**
+4. **Final End-to-End Test**
     - **Action:** Perform a full, end-to-end test of the `migrate` command.
     - **Verification:** Run `pnpm start migrate --from google-chat --to slack --google-space <test-space-id> --slack-channel <test-channel-name>` and verify that the entire chat history is successfully migrated.

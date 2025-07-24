@@ -478,7 +478,7 @@ async function downloadAuthenticatedUrl(
         method: 'GET',
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          'User-Agent': 'chat-migrator/1.0.0',
+          'User-Agent': 'google-chat-to-slack/1.0.0',
         },
       };
 

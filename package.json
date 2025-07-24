@@ -1,10 +1,10 @@
 {
-  "name": "chat-migrator",
+  "name": "google-chat-to-slack",
   "version": "1.0.0",
-  "description": "Node script to migrate channels, threads, and messages from Google Chat to Slack.",
+  "description": "Migrates channels, threads, and messages, attachments and reactions from Google Chat to Slack.",
   "main": "index.js",
   "scripts": {
-    "start": "ts-node bin/chatmig.ts",
+    "start": "ts-node bin/googletoslack.ts",
     "prepare": "husky",
     "lint": "pnpm dlx ultracite lint",
     "format": "pnpm dlx ultracite format",

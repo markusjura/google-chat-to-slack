@@ -410,7 +410,7 @@ async function postSlackMessage(
 async function performDryRun(slack: WebClient): Promise<void> {
   console.log('[Dry Run] Testing Slack API connection...');
 
-  const testChannelName = `chat-migrator-test-${Date.now()}`;
+  const testChannelName = `google-chat-to-slack-test-${Date.now()}`;
 
   try {
     // Create test channel with unique name
@@ -420,7 +420,7 @@ async function performDryRun(slack: WebClient): Promise<void> {
     // Post test message
     const testResult = await slack.chat.postMessage({
       channel: testChannel.id,
-      text: 'Test message from chat-migrator - this will be deleted',
+      text: 'Test message from google-chat-to-slack - this will be deleted',
     });
 
     if (testResult.ok) {

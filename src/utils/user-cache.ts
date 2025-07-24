@@ -16,7 +16,7 @@ export class UserCache {
   private readonly maxAttempts: number;
 
   constructor(cacheExpiryMs = 300_000, maxAttempts = 3) {
-    // 5 minutes default
+    // 5 minutes default (test modification)
     this.cacheExpiryMs = cacheExpiryMs;
     this.maxAttempts = maxAttempts;
   }
@@ -69,7 +69,7 @@ export class UserCache {
    */
   cleanup(): void {
     const now = Date.now();
-    for (const [userId, entry] of this.cache.entries()) {
+    for (const [userId, entry] of Array.from(this.cache.entries())) {
       if (now - entry.timestamp > this.cacheExpiryMs) {
         this.cache.delete(userId);
       }
@@ -82,6 +82,7 @@ export class UserCache {
   getStats(): { size: number; hitRate?: number } {
     return {
       size: this.cache.size,
+      // TODO: Track hit rate in future version (test change)
     };
   }
 

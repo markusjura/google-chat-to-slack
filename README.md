@@ -1,6 +1,6 @@
-# Chat Migrator
+# Google Chat to Slack Migrator
 
-This node script `chatmig` is migrating channels, messages, and threads from Google Chat to Slack.
+This CLI tool is migrating channels, threads, and messages, attachments and reactions from Google Chat to Slack.
 
 ## Installation
 
@@ -49,6 +49,7 @@ pnpm start export --output /custom/path
 ```
 
 The export command will:
+
 - Download all messages, attachments, and user avatars to `data/export/`
 - Create a clean directory structure with `attachments/` and `avatars/` subdirectories
 - Generate an `export.json` file with complete message data and local file paths
@@ -71,6 +72,7 @@ pnpm start transform --input /custom/export --output /custom/import
 ```
 
 The transform command will:
+
 - Read from `data/export/` by default
 - Transform Google Chat data to Slack 2025 API format
 - Write to `data/import/` (replaces existing directory)

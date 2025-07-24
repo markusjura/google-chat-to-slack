@@ -1,6 +1,6 @@
 import { Entry } from '@napi-rs/keyring';
 
-const SERVICE_NAME = 'chat-migrator';
+const SERVICE_NAME = 'google-chat-to-slack';
 
 export async function setToken(account: string, token: string): Promise<void> {
   const entry = new Entry(SERVICE_NAME, account);
