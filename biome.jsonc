@@ -3,7 +3,10 @@
   "extends": ["ultracite"],
   "files": {
     "ignoreUnknown": true,
-    "includes": ["src/**/*.{ts,tsx,js,jsx,json,jsonc,css,html}"]
+    "includes": [
+      "src/**/*.{ts,tsx,js,jsx,json,jsonc,css,html}",
+      "bin/**/*.{ts,js}"
+    ]
   },
   "linter": {
     "rules": {

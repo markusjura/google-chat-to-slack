@@ -2,9 +2,15 @@
   "name": "google-chat-to-slack",
   "version": "1.0.0",
   "description": "Migrates channels, threads, and messages, attachments and reactions from Google Chat to Slack.",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "bin": {
+    "googletoslack": "./dist/bin/googletoslack.js"
+  },
   "scripts": {
     "start": "ts-node bin/googletoslack.ts",
+    "build": "tsc && chmod +x dist/bin/googletoslack.js",
+    "dev": "ts-node bin/googletoslack.ts",
+    "prepublishOnly": "pnpm run build",
     "prepare": "husky",
     "lint": "pnpm dlx ultracite lint",
     "format": "pnpm dlx ultracite format",
@@ -40,8 +46,27 @@
   "keywords": [
     "slack",
     "google chat",
-    "import"
+    "import",
+    "migration",
+    "cli",
+    "google workspace"
   ],
   "author": "Markus Jura",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/markusjura/google-chat-to-slack.git"
+  },
+  "homepage": "https://github.com/markusjura/google-chat-to-slack#readme",
+  "bugs": {
+    "url": "https://github.com/markusjura/google-chat-to-slack/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md"
+  ],
   "packageManager": "pnpm@10.13.1"
 }
