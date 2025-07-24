@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# Chat Migrator Architecture
+## Chat Migrator Architecture
 
 This is a Node.js CLI tool that migrates channels, messages, and threads from Google Chat to Slack using a three-stage pipeline: **Export → Transform → Import**.
 
@@ -60,15 +60,20 @@ Each command is implemented as a separate module in `src/cli/commands/`:
 
 ### TypeScript Guidelines
 
-- Use interfaces over types
+- Write concise, technical TypeScript code with accurate examples
+- Use functional and declarative programming patterns; avoid classes
+- Prefer iteration and modularization over code duplication
+- Use descriptive variable names with auxiliary verbs (e.g., isLoading, hasError)
 - Follow Declaration Before Use principle
 - Avoid enums; use const objects with 'as const'
 - Explicit return types for all functions
 - Avoid try/catch blocks unless necessary for error translation
+- Be concise and to the point
 
 ### Testing Strategy
 
 **Architecture: CLI Command-Level End-to-End Testing**
+
 - Test at the CLI command level for comprehensive coverage that matches real user workflows
 - Mock external services only (Google/Slack APIs), allowing internal service integration to run end-to-end
 - Use realistic test scenarios based on actual CLI command combinations
@@ -94,12 +99,14 @@ Each command is implemented as a separate module in `src/cli/commands/`:
 ```
 
 **Key Test Scenarios:**
+
 - **Export**: Full export, dry-run, specific space filtering, error handling
 - **Transform**: Data conversion, user mapping, attachment processing
 - **Import**: Full import, target channel, dry-run connection test
 - **Utils**: Rate limiting algorithms, cache management, token operations
 
 **Mocking Strategy:**
+
 - ✅ Mock: External APIs (Google Chat, Slack), file system, HTTP requests, OS keyring
 - ❌ Don't Mock: Internal services, data transformation, CLI parsing, business logic
 
@@ -161,12 +168,17 @@ pnpm start import --dry-run                       # Test Slack API connectivity
 - Slack: Bot tokens via environment variables or interactive setup
 - Automatic token refresh and validation
 
-## Checkpointing
+## Plan & Review
 
-- Use claudepoint MCP server for code checkpointing
-- Create checkpoints before major code changes__
-- Revert to checkpoints when requested by user
+### Before starting work
 
-## Browser Testing
+- Always go to plan mode to make a plan
+- After you made the plan, ensure you Write the plan to `.claude/tasks/TASK_NAME.md`
+- The plan should be a detailed implementation plan and with reasoning, as well as broken down tasks.
+- If the task require external knowledge or libraries, research to get the latest knowledge (Use Task tool for research)
+- Don't over plan, stay focused
 
-- Use Playwright MCP for UI verification when needed
+### During implementation
+
+- Update the plan as you work
+- After you completed a task in the plan, update and apped detailed descriptions of the changes you've made, so following tasks can be easily hand over to other engineers.
