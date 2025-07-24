@@ -123,7 +123,7 @@ export const migrateCommand: CommandModule<object, Args> = {
       console.log('');
 
       // Transform data
-      const transformText = '🔄 TRANSFORM TO IMPORT FORMAT';
+      const transformText = '🔄 TRANSFORM';
       console.log(transformText);
       console.log('═'.repeat(transformText.length));
 
