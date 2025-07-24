@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Chat Migrator Architecture
+## Google Chat to Slack Architecture
 
 This is a Node.js CLI tool that migrates channels, messages, and threads from Google Chat to Slack using a three-stage pipeline: **Export → Transform → Import**.
 
@@ -36,6 +36,7 @@ Transform Service → data/import/import.json → Import Service → Slack API
 ### CLI Command Structure
 
 Each command is implemented as a separate module in `src/cli/commands/`:
+
 - **login/logout**: OAuth2 flow management
 - **export**: Google Chat data extraction with attachment downloads
 - **transform**: Data format conversion and user mapping
@@ -79,6 +80,7 @@ Each command is implemented as a separate module in `src/cli/commands/`:
 - Use realistic test scenarios based on actual CLI command combinations
 
 **Test Structure (`src/__tests__/`):**
+
 ```
 ├── commands/          # CLI command integration tests
 │   ├── export.test.ts      # export [--space X] [--dry-run]

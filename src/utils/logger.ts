@@ -159,7 +159,7 @@ export class Logger {
     const errors = this.entries.filter((entry) => entry.level === 'error');
     const warnings = this.entries.filter((entry) => entry.level === 'warning');
 
-    const header = `Chat Migrator ${this.context} Log
+    const header = `${this.context} Log
 Generated: ${new Date().toISOString()}
 Total Issues: ${this.getTotalCount()} (${errors.length} errors, ${warnings.length} warnings)
 

@@ -2,10 +2,7 @@ import { existsSync, rmSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { CommandModule } from 'yargs';
-import {
-  exportGoogleChatData,
-  loginToGoogle,
-} from '../../services/google-chat';
+import { exportGoogleChatData } from '../../services/google-chat';
 import { importSlackData, loginToSlack } from '../../services/slack';
 import { transformGoogleChatToSlack } from '../../services/transformation';
 
@@ -98,9 +95,9 @@ export const migrateCommand: CommandModule<object, Args> = {
       console.log(authStageText);
       console.log('─'.repeat(authStageText.length));
 
-      console.log('📝 Authenticating with Google Chat...');
-      await loginToGoogle();
-      console.log('✅ Google Chat authentication ready');
+      console.log(
+        '✅ Google Chat authentication ready (assuming already logged in)'
+      );
 
       console.log('📝 Authenticating with Slack...');
       await loginToSlack();
