@@ -23,11 +23,29 @@ interface SlackMessageArgs {
 interface ImportOptions {
   dryRun?: boolean;
   channelPrefix?: string;
+  channelRename?: string[];
 }
 
 // Function declarations (following Declaration Before Use principle)
 
 // Removed getSenderDisplayName and USER_ID_REGEX - display names are now included directly in messages
+
+function parseChannelRenames(channelRename?: string[]): Map<string, string> {
+  const renameMap = new Map<string, string>();
+
+  if (!channelRename) {
+    return renameMap;
+  }
+
+  for (const rename of channelRename) {
+    const [oldName, newName] = rename.split('=');
+    if (oldName && newName) {
+      renameMap.set(oldName, newName);
+    }
+  }
+
+  return renameMap;
+}
 
 async function testSlackToken(
   token: string
@@ -624,7 +642,7 @@ export async function importSlackData(
   channelFilters?: string | string[],
   options: ImportOptions = {}
 ): Promise<void> {
-  const { dryRun = false, channelPrefix } = options;
+  const { dryRun = false, channelPrefix, channelRename } = options;
   const logger = new Logger('Import');
   const slack = await getSlackWebClient();
 
@@ -641,6 +659,20 @@ export async function importSlackData(
   if (dryRun) {
     await performDryRun(slack);
     return;
+  }
+
+  // Parse channel renames
+  const renameMap = parseChannelRenames(channelRename);
+
+  // Apply channel renames
+  if (renameMap.size > 0) {
+    for (const channel of importData.channels) {
+      const newName = renameMap.get(channel.name);
+      if (newName) {
+        console.log(`Renaming channel: ${channel.name} → ${newName}`);
+        channel.name = newName;
+      }
+    }
   }
 
   // Filter channels if specified

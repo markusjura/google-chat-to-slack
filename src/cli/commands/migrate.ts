@@ -14,6 +14,7 @@ interface Args {
   output?: string;
   'dry-run'?: boolean;
   'channel-prefix'?: string;
+  'channel-rename'?: string | string[];
 }
 
 export const migrateCommand: CommandModule<object, Args> = {
@@ -41,6 +42,12 @@ export const migrateCommand: CommandModule<object, Args> = {
       .option('channel-prefix', {
         type: 'string',
         describe: 'Prefix to add to channel names during Slack import',
+      })
+      .option('channel-rename', {
+        type: 'string',
+        array: true,
+        describe:
+          'Rename channels during import (format: old-name=new-name, can be used multiple times)',
       })
       .example('$0 migrate', 'Migrate all Google Chat spaces to Slack')
       .example(
@@ -71,6 +78,7 @@ export const migrateCommand: CommandModule<object, Args> = {
         output = 'data',
         'dry-run': isDryRun,
         'channel-prefix': channelPrefix,
+        'channel-rename': channelRename,
       } = args;
 
       const exportDir = path.join(output, 'export');
@@ -143,6 +151,7 @@ export const migrateCommand: CommandModule<object, Args> = {
       await importSlackData(importDir, channel, {
         dryRun: isDryRun,
         channelPrefix,
+        channelRename: channelRename as string[] | undefined,
       });
 
       console.log('✅ Import completed successfully');

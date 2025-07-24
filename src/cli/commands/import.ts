@@ -15,11 +15,109 @@ function getImportDirectory(): string | undefined {
   }
 }
 
+function validateChannelsAndRenames(
+  inputDir: string,
+  channelFilters?: string | string[],
+  channelRenames?: string | string[]
+): void {
+  if (
+    (!channelFilters ||
+      (Array.isArray(channelFilters) && channelFilters.length === 0)) &&
+    (!channelRenames ||
+      (Array.isArray(channelRenames) && channelRenames.length === 0))
+  ) {
+    return;
+  }
+
+  try {
+    const fs = require('node:fs');
+    const importDataPath = path.join(inputDir, 'import.json');
+
+    if (!fs.existsSync(importDataPath)) {
+      console.error('Import data not found. Please run transform first.');
+      process.exit(1);
+    }
+
+    const importData = JSON.parse(fs.readFileSync(importDataPath, 'utf-8'));
+    const availableChannels = importData.channels.map((ch: any) => ch.name);
+
+    validateChannelFilters(channelFilters, availableChannels);
+    validateChannelRenames(channelRenames, availableChannels);
+  } catch (error) {
+    console.error('Failed to validate channels:', error);
+    process.exit(1);
+  }
+}
+
+function validateChannelFilters(
+  channelFilters: string | string[] | undefined,
+  availableChannels: string[]
+): void {
+  if (
+    !channelFilters ||
+    (Array.isArray(channelFilters) && channelFilters.length === 0)
+  ) {
+    return;
+  }
+
+  const channelArray = Array.isArray(channelFilters)
+    ? channelFilters
+    : [channelFilters];
+  const invalidChannels = channelArray.filter(
+    (ch: string) => !availableChannels.includes(ch)
+  );
+
+  if (invalidChannels.length > 0) {
+    console.error(`Invalid channel(s): ${invalidChannels.join(', ')}`);
+    console.error(`Available channels: ${availableChannels.join(', ')}`);
+    process.exit(1);
+  }
+}
+
+function validateChannelRenames(
+  channelRenames: string | string[] | undefined,
+  availableChannels: string[]
+): void {
+  if (
+    !channelRenames ||
+    (Array.isArray(channelRenames) && channelRenames.length === 0)
+  ) {
+    return;
+  }
+
+  const renameArray = Array.isArray(channelRenames)
+    ? channelRenames
+    : [channelRenames];
+  const invalidRenames: string[] = [];
+
+  for (const rename of renameArray) {
+    const [oldName] = rename.split('=');
+    if (!oldName) {
+      console.error(
+        `Invalid rename format: ${rename}. Expected format: old-name=new-name`
+      );
+      process.exit(1);
+    }
+    if (!availableChannels.includes(oldName)) {
+      invalidRenames.push(oldName);
+    }
+  }
+
+  if (invalidRenames.length > 0) {
+    console.error(
+      `Invalid channel(s) for rename: ${invalidRenames.join(', ')}`
+    );
+    console.error(`Available channels: ${availableChannels.join(', ')}`);
+    process.exit(1);
+  }
+}
+
 type ImportArgs = {
   input?: string;
   channel?: string | string[];
   dryRun?: boolean;
   clean?: boolean;
+  channelRename?: string | string[];
 };
 
 export const importCommand: CommandModule<object, ImportArgs> = {
@@ -44,6 +142,12 @@ export const importCommand: CommandModule<object, ImportArgs> = {
       .option('channel-prefix', {
         describe: 'Prefix to add to channel names during import',
         type: 'string',
+      })
+      .option('channel-rename', {
+        describe:
+          'Rename channels during import (format: old-name=new-name, can be used multiple times)',
+        type: 'string',
+        array: true,
       })
       .strict()
       .fail((msg, err, yargsInstance) => {
@@ -71,41 +175,14 @@ export const importCommand: CommandModule<object, ImportArgs> = {
       console.log(`Using import directory: ${inputDir}`);
     }
 
-    // Validate channel filters if provided
-    if (argv.channel && argv.channel.length > 0) {
-      try {
-        const fs = require('node:fs');
-        const importDataPath = path.join(inputDir, 'import.json');
-
-        if (!fs.existsSync(importDataPath)) {
-          console.error('Import data not found. Please run transform first.');
-          process.exit(1);
-        }
-
-        const importData = JSON.parse(fs.readFileSync(importDataPath, 'utf-8'));
-        const availableChannels = importData.channels.map((ch: any) => ch.name);
-        const channelArray = Array.isArray(argv.channel)
-          ? argv.channel
-          : [argv.channel];
-        const invalidChannels = channelArray.filter(
-          (ch: string) => !availableChannels.includes(ch)
-        );
-
-        if (invalidChannels.length > 0) {
-          console.error(`Invalid channel(s): ${invalidChannels.join(', ')}`);
-          console.error(`Available channels: ${availableChannels.join(', ')}`);
-          process.exit(1);
-        }
-      } catch (error) {
-        console.error('Failed to validate channels:', error);
-        process.exit(1);
-      }
-    }
+    // Validate channel filters and renames if provided
+    validateChannelsAndRenames(inputDir, argv.channel, argv.channelRename);
 
     try {
       await importSlackData(inputDir, argv.channel, {
         dryRun: argv.dryRun,
         channelPrefix: argv.channelPrefix as string | undefined,
+        channelRename: argv.channelRename as string[] | undefined,
       });
     } catch (error) {
       console.error('Import failed:', error);

@@ -12,9 +12,9 @@ export const loginCommand: CommandModule<object, LoginArgs> = {
   builder: (yargs) =>
     yargs
       .positional('provider', {
-        describe: 'The chat provider to log in to (google-chat, slack)',
+        describe: 'The chat provider to log in to (google, slack)',
         type: 'string',
-        choices: ['google-chat', 'slack'],
+        choices: ['google', 'slack'],
         demandOption: true,
       })
       .strict()
@@ -29,7 +29,7 @@ export const loginCommand: CommandModule<object, LoginArgs> = {
         process.exit(1);
       }),
   handler: async (argv) => {
-    if (argv.provider === 'google-chat') {
+    if (argv.provider === 'google') {
       await loginToGoogle();
     } else if (argv.provider === 'slack') {
       await loginToSlack();
