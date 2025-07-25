@@ -19,9 +19,9 @@ import type {
 import { Logger } from '../utils/logger';
 import { ProgressBar } from '../utils/progress-bar';
 import {
-  googleChatProjectRateLimiter,
-  googlePeopleApiRateLimiter,
-} from '../utils/rate-limiter';
+  withGoogleChatRateLimit,
+  withGoogleDirectoryRateLimit,
+} from '../utils/rate-limiting';
 import { getToken, setToken } from '../utils/token-manager';
 import { userCache } from '../utils/user-cache';
 
@@ -198,18 +198,18 @@ async function batchFetchUserNames(
     `🔍 Fetching names for ${uncachedUserIds.length} unique users via Directory API...`
   );
 
-  // Process uncached users concurrently using rate limiter
-  const userFetchPromises = uncachedUserIds.map((userId) =>
-    googlePeopleApiRateLimiter.execute(async () => {
-      const fullName = await fetchUserWithDirectoryAPI(userId, logger);
+  // Process uncached users concurrently with rate limiting
+  const userFetchPromises = uncachedUserIds.map(async (userId) => {
+    const fullName = await withGoogleDirectoryRateLimit(async () =>
+      fetchUserWithDirectoryAPI(userId, logger)
+    );
 
-      // Cache the result (even if undefined)
-      personNamesCache.set(userId, fullName);
+    // Cache the result (even if undefined)
+    personNamesCache.set(userId, fullName);
 
-      // Return result for aggregation
-      return { userId, fullName };
-    })
-  );
+    // Return result for aggregation
+    return { userId, fullName };
+  });
 
   const userResults = await Promise.all(userFetchPromises);
 
@@ -233,7 +233,7 @@ function downloadAttachment(
   resourceName: string,
   outputPath: string
 ): Promise<void> {
-  return googleChatProjectRateLimiter.execute(async () => {
+  return withGoogleChatRateLimit(async () => {
     const oAuth2Client = await getAuthenticatedOauth2Client();
 
     // Use direct HTTP request with proper ?alt=media parameter
@@ -283,7 +283,7 @@ function downloadGoogleDriveFile(
   driveFileId: string,
   outputPath: string
 ): Promise<void> {
-  return googleChatProjectRateLimiter.execute(async () => {
+  return withGoogleChatRateLimit(async () => {
     try {
       const oAuth2Client = await getAuthenticatedOauth2Client();
       const drive = google.drive({ version: 'v3', auth: oAuth2Client });
@@ -336,7 +336,7 @@ export async function listSpaces(): Promise<Space[]> {
 
   do {
     // biome-ignore lint/nursery/noAwaitInLoop: The Google Chat API uses pagination, and we need to await each page.
-    const res = await googleChatProjectRateLimiter.execute(async () => {
+    const res = await withGoogleChatRateLimit(async () => {
       return (await chat.spaces.list({
         pageSize: 100,
         pageToken,
@@ -461,13 +461,13 @@ async function downloadAuthenticatedUrl(
   urlString: string,
   outputPath: string
 ): Promise<void> {
-  return await googleChatProjectRateLimiter.execute(async () => {
+  return await withGoogleChatRateLimit(async () => {
     const oAuth2Client = await getAuthenticatedOauth2Client();
 
     // Get access token for Authorization header
     const { token: accessToken } = await oAuth2Client.getAccessToken();
 
-    return new Promise((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       const parsedUrl = new URL(urlString);
       const protocol = parsedUrl.protocol === 'https:' ? https : http;
 
@@ -726,7 +726,7 @@ export async function listMessages(
 
   do {
     // biome-ignore lint/nursery/noAwaitInLoop: The Google Chat API uses pagination, and we need to await each page.
-    const res = await googleChatProjectRateLimiter.execute(async () => {
+    const res = await withGoogleChatRateLimit(async () => {
       return (await chat.spaces.messages.list({
         parent: spaceName,
         pageSize: limit ?? 1000,

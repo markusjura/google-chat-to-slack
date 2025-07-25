@@ -2,6 +2,10 @@ import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { CommandModule } from 'yargs';
 import { exportGoogleChatData } from '../../services/google-chat';
+import {
+  configureForExport,
+  EXPORT_RATE_LIMITS,
+} from '../../utils/rate-limiting';
 
 type ExportArgs = {
   channel?: string;
@@ -39,6 +43,9 @@ export const exportCommand: CommandModule<object, ExportArgs> = {
         process.exit(1);
       }),
   handler: async (argv) => {
+    // Configure rate limiting for export operations
+    configureForExport(EXPORT_RATE_LIMITS);
+
     const outputDir = path.resolve(argv.output);
     console.log('outputDir', outputDir);
 

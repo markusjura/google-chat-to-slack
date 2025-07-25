@@ -11,6 +11,7 @@ import type {
 } from '../types/slack';
 import { Logger } from '../utils/logger';
 import { ProgressBar } from '../utils/progress-bar';
+import { withSlackRateLimit } from '../utils/rate-limiting';
 import { getToken, setToken } from '../utils/token-manager';
 
 // Interface for message arguments to replace 'any' type
@@ -88,9 +89,11 @@ async function findSlackChannelByName(
   channelName: string
 ): Promise<SlackChannel | undefined> {
   try {
-    const result = (await slack.conversations.list({
-      types: 'public_channel,private_channel',
-    })) as SlackConversationsListResponse;
+    const result = (await withSlackRateLimit(async () =>
+      slack.conversations.list({
+        types: 'public_channel,private_channel',
+      })
+    )) as SlackConversationsListResponse;
 
     if (!(result.ok && result.channels)) {
       return;
@@ -107,10 +110,12 @@ async function createSlackChannel(
   name: string,
   isPrivate: boolean
 ): Promise<SlackChannel> {
-  const result = await slack.conversations.create({
-    name,
-    is_private: isPrivate,
-  });
+  const result = await withSlackRateLimit(async () =>
+    slack.conversations.create({
+      name,
+      is_private: isPrivate,
+    })
+  );
 
   if (!(result.ok && result.channel)) {
     throw new Error(`Failed to create channel: ${result.error}`);
@@ -125,7 +130,9 @@ async function resolveChannelIdByName(
 ): Promise<string | undefined> {
   // Try to get channel info by name to get the actual ID
   try {
-    const channelInfo = await slack.conversations.info({ channel: name });
+    const channelInfo = await withSlackRateLimit(async () =>
+      slack.conversations.info({ channel: name })
+    );
     if (channelInfo.ok && channelInfo.channel?.id) {
       return channelInfo.channel.id;
     }
@@ -135,10 +142,12 @@ async function resolveChannelIdByName(
 
   // Try alternative: search through conversations list with different parameters
   try {
-    const conversationsList = await slack.conversations.list({
-      types: 'public_channel,private_channel',
-      limit: 1000, // Increase limit to find more channels
-    });
+    const conversationsList = await withSlackRateLimit(async () =>
+      slack.conversations.list({
+        types: 'public_channel,private_channel',
+        limit: 1000, // Increase limit to find more channels
+      })
+    );
 
     if (conversationsList.ok && conversationsList.channels) {
       const foundChannel = conversationsList.channels.find(
@@ -218,11 +227,13 @@ async function uploadAndPostMessageWithAttachments(
       throw new Error(errorMessage);
     }
 
-    const uploadUrlResult = await slack.files.getUploadURLExternal({
-      filename: attachment.filename,
-      length: fileContent.length,
-      alt_text: attachment.alt_text,
-    });
+    const uploadUrlResult = await withSlackRateLimit(async () =>
+      slack.files.getUploadURLExternal({
+        filename: attachment.filename,
+        length: fileContent.length,
+        alt_text: attachment.alt_text,
+      })
+    );
 
     if (
       !(
@@ -273,8 +284,9 @@ async function uploadAndPostMessageWithAttachments(
     completeParams.thread_ts = threadTs;
   }
 
-  const completeResult =
-    await slack.files.completeUploadExternal(completeParams);
+  const completeResult = await withSlackRateLimit(async () =>
+    slack.files.completeUploadExternal(completeParams)
+  );
 
   if (!completeResult.ok) {
     throw new Error(`Failed to complete upload: ${completeResult.error}`);
@@ -302,7 +314,9 @@ async function postTextMessage(
     messageArgs.thread_ts = threadTs;
   }
 
-  const result = await slack.chat.postMessage(messageArgs);
+  const result = await withSlackRateLimit(async () =>
+    slack.chat.postMessage(messageArgs)
+  );
 
   if (!result.ok) {
     throw new Error(`Failed to post message: ${result.error}`);
@@ -436,17 +450,21 @@ async function performDryRun(slack: WebClient): Promise<void> {
     console.log(`[Dry Run] Created test channel: #${testChannelName}`);
 
     // Post test message
-    const testResult = await slack.chat.postMessage({
-      channel: testChannel.id,
-      text: 'Test message from google-chat-to-slack - this will be deleted',
-    });
+    const testResult = await withSlackRateLimit(async () =>
+      slack.chat.postMessage({
+        channel: testChannel.id,
+        text: 'Test message from google-chat-to-slack - this will be deleted',
+      })
+    );
 
     if (testResult.ok) {
       console.log('[Dry Run] Successfully posted test message');
     }
 
     // Clean up: delete the channel
-    await slack.conversations.archive({ channel: testChannel.id });
+    await withSlackRateLimit(async () =>
+      slack.conversations.archive({ channel: testChannel.id })
+    );
     console.log('[Dry Run] Cleaned up test channel');
 
     console.log('[Dry Run] ✅ Slack API connection test successful!');

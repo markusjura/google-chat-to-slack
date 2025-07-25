@@ -1,6 +1,10 @@
 import path from 'node:path';
 import type { CommandModule } from 'yargs';
 import { importSlackData } from '../../services/slack';
+import {
+  configureForImport,
+  IMPORT_RATE_LIMITS,
+} from '../../utils/rate-limiting';
 
 function getImportDirectory(): string | undefined {
   const importDir = path.resolve('data/import');
@@ -177,6 +181,9 @@ export const importCommand: CommandModule<object, ImportArgs> = {
 
     // Validate channel filters and renames if provided
     validateChannelsAndRenames(inputDir, argv.channel, argv.channelRename);
+
+    // Configure rate limiting for import operations
+    configureForImport(IMPORT_RATE_LIMITS);
 
     try {
       await importSlackData(inputDir, argv.channel, {
