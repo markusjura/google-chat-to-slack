@@ -734,9 +734,12 @@ export async function listMessages(
       })) as unknown as GaxiosResponse<chat_v1.Schema$ListMessagesResponse>;
     });
 
-    if (res.data.messages) {
-      messages.push(...(res.data.messages as GoogleMessage[]));
+    // const pageMessages = res.data.messages as GoogleMessage[];
+    const pageMessages = res.data.messages?.map(transformMessage) || undefined;
+    if (pageMessages) {
+      messages.push(...pageMessages);
     }
+
     pageToken = res.data.nextPageToken ?? undefined;
     if (limit && messages.length >= limit) {
       break;
@@ -750,6 +753,60 @@ interface SpaceOverview {
   space: Space;
   messageCount: number;
   messages: GoogleMessage[];
+}
+
+export function transformMessage(
+  message: chat_v1.Schema$Message
+): GoogleMessage {
+  const transformedMessage = { ...message } as GoogleMessage;
+
+  // Fix formatting issues in formattedText
+  if (transformedMessage.formattedText) {
+    let text = transformedMessage.formattedText;
+
+    // Fix issue 1: Add newline after closing code block when followed directly by text
+    // Pattern: ```sometext -> ```\nsometext (but only when ``` is closing a code block)
+    // We need to match code blocks that end with ``` followed by non-newline characters
+    text = text.replace(/(```[^`\n]*\n[^`]*?```)([^\n`])/g, '$1\n$2');
+
+    // Fix issue 2: Move "*" or "_" from between newlines to beginning of text line
+    // Pattern: \n*\nbold text* or \n_\nitalic text_
+    // Should become: \n\n*bold text* or \n\n_italic text_
+    text = text.replace(
+      /(\n+)([*_])(\n+)([^*_\n][^*_]*\2)/g,
+      (match, newlines1, formatChar, newlines2, textWithFormatChar) => {
+        // Count format characters in the text portion (should be exactly 1 at the end)
+        const formatCharCount = (
+          textWithFormatChar.match(new RegExp(`\\${formatChar}`, 'g')) || []
+        ).length;
+        if (formatCharCount === 1 && textWithFormatChar.endsWith(formatChar)) {
+          return `${newlines1}${newlines2}${formatChar}${textWithFormatChar}`;
+        }
+        return match; // Don't modify if pattern doesn't match expected format
+      }
+    );
+
+    // Fix issue 3: Remove "*" or "_" character between two line breaks (\n*\n or \n_\n)
+    // Do this before orphaned leading character removal to clean up standalone chars first
+    text = text.replace(/\n[*_]\n/g, '\n\n');
+
+    // Fix issue 4: Remove leading "*" or "_" from lines that start with them followed directly by text (no space)
+    // and don't have another matching character in the rest of the line
+    text = text.replace(
+      /^([*_])([^\s][^\n]*?)(?=\n|$)/gm,
+      (match, formatChar, textAfterChar) => {
+        // Check if there's another matching format character in the rest of the line
+        if (!textAfterChar.includes(formatChar)) {
+          return textAfterChar;
+        }
+        return match;
+      }
+    );
+
+    transformedMessage.formattedText = text;
+  }
+
+  return transformedMessage;
 }
 
 async function getSpaceOverviews(
