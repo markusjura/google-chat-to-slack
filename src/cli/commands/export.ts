@@ -8,7 +8,7 @@ import {
 } from '../../utils/rate-limiting';
 
 type ExportArgs = {
-  channel?: string;
+  channel?: string | string[];
   output: string;
   dryRun?: boolean;
 };
@@ -19,8 +19,10 @@ export const exportCommand: CommandModule<object, ExportArgs> = {
   builder: (yargs) =>
     yargs
       .option('channel', {
-        describe: 'The name of the Google Chat space to export',
+        describe:
+          'The name of the Google Chat space(s) to export (can be used multiple times)',
         type: 'string',
+        array: true,
       })
       .option('output', {
         describe: 'The path to the output directory',

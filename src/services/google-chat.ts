@@ -940,7 +940,7 @@ function displayExportOverview(
 }
 
 export async function exportGoogleChatData(
-  spaceName: string | undefined,
+  spaceNames: string | string[] | undefined,
   outputPath: string,
   options: ExportOptions = {}
 ): Promise<void> {
@@ -960,8 +960,11 @@ export async function exportGoogleChatData(
   const uniqueUserIds = new Set<string>();
 
   const allSpaces = await listSpaces();
-  let targetSpaces = spaceName
-    ? allSpaces.filter((s) => s.displayName === spaceName)
+  let targetSpaces = spaceNames
+    ? allSpaces.filter((s) => {
+        const nameArray = Array.isArray(spaceNames) ? spaceNames : [spaceNames];
+        return nameArray.includes(s.displayName);
+      })
     : allSpaces;
 
   // Apply space limit for dry-run

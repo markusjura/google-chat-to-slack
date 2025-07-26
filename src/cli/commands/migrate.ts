@@ -7,7 +7,7 @@ import { importSlackData, loginToSlack } from '../../services/slack';
 import { transformGoogleChatToSlack } from '../../services/transformation';
 
 interface Args {
-  channel?: string;
+  channel?: string | string[];
   output?: string;
   'dry-run'?: boolean;
   'channel-prefix'?: string;
@@ -22,8 +22,9 @@ export const migrateCommand: CommandModule<object, Args> = {
     return yargs
       .option('channel', {
         type: 'string',
+        array: true,
         describe:
-          'Name of specific Google Chat space to migrate (if not specified, migrates all spaces)',
+          'Name of specific Google Chat space(s) to migrate (can be used multiple times, if not specified, migrates all spaces)',
       })
       .option('output', {
         type: 'string',
@@ -50,6 +51,10 @@ export const migrateCommand: CommandModule<object, Args> = {
       .example(
         '$0 migrate --channel general',
         "Migrate only the 'general' space to 'general' Slack channel"
+      )
+      .example(
+        '$0 migrate --channel general --channel team-updates',
+        "Migrate only 'general' and 'team-updates' spaces"
       )
       .example('$0 migrate --dry-run', 'Test the complete migration pipeline')
       .example(
@@ -145,7 +150,8 @@ export const migrateCommand: CommandModule<object, Args> = {
       console.log(importText);
       console.log('═'.repeat(importText.length));
 
-      await importSlackData(importDir, channel, {
+      // We don't filter channels here. The export already contains only the channels we want to import.
+      await importSlackData(importDir, undefined, {
         dryRun: isDryRun,
         channelPrefix,
         channelRename: channelRename as string[] | undefined,
