@@ -22,11 +22,11 @@ const DEFAULT_CONFIGS: Record<ApiService, RateLimitConfig> = {
     maxDelayMs: 60_000, // 1 minute max delay
   },
   [API_SERVICES.SLACK]: {
-    capacity: 20, // Burst capacity for Slack
-    refillRate: 5, // 5 requests per second (300/minute with buffer)
-    maxRetries: 3,
+    capacity: 20, // Burst capacity for Slack (allows short bursts)
+    refillRate: 3, // 3 requests per second (conservative vs workspace limit)
+    maxRetries: 5, // Increased retries for better reliability
     baseDelayMs: 1000, // 1 second base delay
-    maxDelayMs: 15_000, // 15 second max delay
+    maxDelayMs: 30_000, // 30 second max delay for rate limit recovery
   },
 } as const;
 
@@ -44,8 +44,8 @@ export const EXPORT_RATE_LIMITS: CommandRateLimits = {
 
 export const IMPORT_RATE_LIMITS: CommandRateLimits = {
   slack: {
-    capacity: 10, // Conservative for imports
-    refillRate: 1, // 1 message per second per channel
+    capacity: 20, // Allow burst behavior as documented by Slack
+    refillRate: 3, // 3 requests per second (more conservative than workspace limit of ~5/sec)
   },
   maxConcurrentOperations: 3, // Process up to 3 channels concurrently
 } as const;
