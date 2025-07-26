@@ -13,45 +13,48 @@ import type {
 import { Logger } from '../utils/logger';
 import { ProgressBar } from '../utils/progress-bar';
 import {
-  API_SERVICES,
   createTokenBucket,
-  getDefaultConfig,
+  SLACK_API_ENDPOINTS,
+  SLACK_ENDPOINT_TO_TIER,
+  SLACK_TIER_CONFIGS,
+  type SlackApiEndpoint,
   withSlackRateLimit,
 } from '../utils/rate-limiting';
 import { getToken, setToken } from '../utils/token-manager';
 
-// Global channel rate limiter map
-const channelRateLimiters = new Map<
-  string,
+// Slack API endpoint-based rate limiter maps (per channel for applicable endpoints)
+const endpointRateLimiters = new Map<
+  string, // channelId:endpoint key
   ReturnType<typeof createTokenBucket>
 >();
 
-// Get or create a rate limiter for a specific channel
-function getChannelRateLimiter(channelId: string) {
-  if (!channelRateLimiters.has(channelId)) {
-    const slackConfig = getDefaultConfig(API_SERVICES.SLACK);
-    // Use even more conservative settings for per-channel limiting
-    const channelConfig = {
-      ...slackConfig,
-      capacity: 2, // Very small burst per channel
-      refillRate: 0.9, // Slightly less than 1 req/sec to be safe
-    };
-    channelRateLimiters.set(channelId, createTokenBucket(channelConfig));
+// Get or create a rate limiter for a specific endpoint and channel
+function getEndpointRateLimiter(endpoint: SlackApiEndpoint, channelId: string) {
+  const key = `${channelId}:${endpoint}`;
+
+  if (!endpointRateLimiters.has(key)) {
+    const tier = SLACK_ENDPOINT_TO_TIER[endpoint];
+    const tierConfig = SLACK_TIER_CONFIGS[tier];
+    endpointRateLimiters.set(key, createTokenBucket(tierConfig));
   }
-  const rateLimiter = channelRateLimiters.get(channelId);
+
+  const rateLimiter = endpointRateLimiters.get(key);
   if (!rateLimiter) {
-    throw new Error(`Failed to get rate limiter for channel: ${channelId}`);
+    throw new Error(
+      `Failed to get rate limiter for endpoint ${endpoint} in channel: ${channelId}`
+    );
   }
   return rateLimiter;
 }
 
-// Rate limit function for channel-specific operations
-async function withChannelRateLimit<T>(
+// Generic rate limit function for any Slack API endpoint
+async function withSlackEndpointRateLimit<T>(
+  endpoint: SlackApiEndpoint,
   channelId: string,
   fn: () => Promise<T>
 ): Promise<T> {
-  const channelRateLimiter = getChannelRateLimiter(channelId);
-  await channelRateLimiter.acquireToken();
+  const rateLimiter = getEndpointRateLimiter(endpoint, channelId);
+  await rateLimiter.acquireToken();
   return await fn();
 }
 
@@ -286,12 +289,16 @@ async function uploadAndPostMessageWithAttachments(
       throw new Error(errorMessage);
     }
 
-    const uploadUrlResult = await withSlackRateLimit(async () =>
-      slack.files.getUploadURLExternal({
-        filename: attachment.filename,
-        length: fileContent.length,
-        alt_text: attachment.alt_text,
-      })
+    // files.getUploadURLExternal is Tier 4 with its own rate limits
+    const uploadUrlResult = await withSlackEndpointRateLimit(
+      SLACK_API_ENDPOINTS.FILES_GET_UPLOAD_URL_EXTERNAL,
+      channelId,
+      async () =>
+        slack.files.getUploadURLExternal({
+          filename: attachment.filename,
+          length: fileContent.length,
+          alt_text: attachment.alt_text,
+        })
     );
 
     if (
@@ -344,8 +351,10 @@ async function uploadAndPostMessageWithAttachments(
     completeParams.thread_ts = threadTs;
   }
 
-  const completeResult = await withChannelRateLimit(channelId, async () =>
-    slack.files.completeUploadExternal(completeParams)
+  const completeResult = await withSlackEndpointRateLimit(
+    SLACK_API_ENDPOINTS.FILES_COMPLETE_UPLOAD_EXTERNAL,
+    channelId,
+    async () => slack.files.completeUploadExternal(completeParams)
   );
 
   if (!completeResult.ok) {
@@ -374,9 +383,11 @@ async function postTextMessage(
     messageArgs.thread_ts = threadTs;
   }
 
-  // Use channel-specific rate limiting
-  const result = await withChannelRateLimit(channelId, async () =>
-    slack.chat.postMessage(messageArgs)
+  // Use channel-specific rate limiting for messages
+  const result = await withSlackEndpointRateLimit(
+    SLACK_API_ENDPOINTS.CHAT_POST_MESSAGE,
+    channelId,
+    async () => slack.chat.postMessage(messageArgs)
   );
 
   if (!result.ok) {
@@ -399,12 +410,15 @@ async function addReactionsToMessage(
     const reaction = reactions[i];
     try {
       // biome-ignore lint/nursery/noAwaitInLoop: Reactions must be added sequentially to preserve order
-      await withChannelRateLimit(channelId, async () =>
-        slack.reactions.add({
-          channel: channelId,
-          timestamp: messageTs,
-          name: reaction.name,
-        })
+      await withSlackEndpointRateLimit(
+        SLACK_API_ENDPOINTS.REACTIONS_ADD,
+        channelId,
+        async () =>
+          slack.reactions.add({
+            channel: channelId,
+            timestamp: messageTs,
+            name: reaction.name,
+          })
       );
     } catch (error) {
       const errorMessage =
@@ -607,12 +621,6 @@ async function processChannel(
 
     processedCount++;
     progressBar.update(processedCount);
-
-    // Add a small delay between messages to further reduce rate limit pressure
-    // This is in addition to the per-channel rate limiting
-    if (processedCount < channelData.messages.length) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
   }
 
   progressBar.finish();

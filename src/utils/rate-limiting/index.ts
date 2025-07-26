@@ -33,7 +33,15 @@ export type {
   RateLimitConfig,
   RateLimitError,
   RateLimiterManager,
+  SlackApiEndpoint,
+  SlackRateLimitTier,
   TokenBucket,
 } from './types';
 // Export constants
-export { API_SERVICES } from './types';
+export {
+  API_SERVICES,
+  SLACK_API_ENDPOINTS,
+  SLACK_ENDPOINT_TO_TIER,
+  SLACK_RATE_LIMIT_TIERS,
+  SLACK_TIER_CONFIGS,
+} from './types';
