@@ -12,6 +12,7 @@ This is a Node.js CLI tool that migrates channels, messages, and threads from Go
 
 ## High-Level Architecture
 
+Ï
 The application follows a service-oriented architecture with clear separation of concerns:
 
 ### Core Pipeline Services

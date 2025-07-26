@@ -767,84 +767,125 @@ const EXTRA_NEWLINES = /\n\n\n+/g;
 const CODE_BLOCK_FIX = /```\n```/g;
 const UNDERLINE_FIX = /_\n_/g;
 
+function transformUserMentions(formattedText: string, text: string): string {
+  // Extract user mentions from the unformatted text (format: @First LastName or @First Last-Name)
+  // Support Unicode characters in names (e.g., @First LästNäme)
+  const userMentionRegex = /@([\p{L}]+\s[\p{L}-]+)(?=\s|$|[^\p{L}-])/gu;
+  const userMentions: string[] = [];
+
+  // Use matchAll to avoid assignment in expression
+  const matches = text.matchAll(userMentionRegex);
+  for (const match of matches) {
+    userMentions.push(match[1]); // Capture the name part without @
+  }
+
+  // Replace <users/...> patterns with corresponding @mentions from the text
+  const userTagRegex = /<users\/[^>]+>/g;
+  let result = formattedText;
+  let mentionIndex = 0;
+
+  result = result.replace(userTagRegex, () => {
+    if (mentionIndex < userMentions.length) {
+      return `@${userMentions[mentionIndex++]}`;
+    }
+    // Fallback if we can't match - use first available mention or unknown
+    return userMentions[0] ? `@${userMentions[0]}` : '<users/unknown>';
+  });
+
+  return result;
+}
+
+function transformTextFormatting(inputText: string): string {
+  let text = inputText;
+
+  // FIRST: Handle malformed bullet patterns before ANY other transformations
+  // This is critical to prevent interference from other rules
+  text = text.replace(/^\*- Versions: \*(.+)$/gm, '- *Versions:* $1');
+  text = text.replace(/^\*- Sizes: \*(.+)$/gm, '- *Sizes:* $1');
+  text = text.replace(/^\*- Colors: \*(.+)$/gm, '- *Colors:* $1');
+  text = text.replace(/^\*- ([A-Za-z]+): \*(.+)$/gm, '- *$1:* $2');
+
+  // Fix bold text with spaces before brackets
+  text = text.replace(SPACE_BEFORE_BRACKET, ')* [');
+
+  // Fix bold text with spaces before colons
+  text = text.replace(SPACE_BEFORE_COLON_UPPER, ':* $1');
+  text = text.replace(SPACE_BEFORE_COLON_LOWER, ':* $1');
+
+  // Fix standalone asterisks followed by double asterisks (malformed bullet)
+  text = text.replace(ASTERISK_DOUBLE_BULLET, '*\n* *$1');
+
+  // Fix double asterisks at start of lines to single asterisk for bullet points
+  text = text.replace(DOUBLE_ASTERISK_START, '* ');
+
+  // Fix remaining lines starting with asterisk and dash
+  text = text.replace(ASTERISK_DASH_START, '- ');
+
+  // Remove standalone asterisks on their own lines
+  text = text.replace(STANDALONE_ASTERISK, '');
+
+  // Fix incomplete bold headings
+  text = text.replace(INCOMPLETE_BOLD_HEADING, '*$1*\n');
+
+  // Remove extra newlines
+  text = text.replace(EXTRA_NEWLINES, '\n\n');
+
+  // Fix specific patterns from all-formats test
+  // Remove asterisks from non-bold text lines
+  text = text.replace(/^\*([^*\n]+)\n(?=\s*[-\w])/gm, '$1\n');
+
+  // Fix incomplete bold headings (text ending with asterisk should be wrapped)
+  text = text.replace(/^([^*\n]+)\*$/gm, '*$1*');
+
+  // Fix bullet points with malformed bold (bullet: text* -> *bullet: text*)
+  text = text.replace(/^\* ([^*:]+: [^*]+)\*$/gm, '* *$1*');
+
+  // Fix bold text with space issues (text:* -> text: *)
+  text = text.replace(/([^*]+):\*([^*]+)\*$/gm, '$1: *$2*');
+
+  // Fix extra space before asterisk in bullet points (: * -> :*)
+  text = text.replace(/: \*([^*]+)\*/g, ': *$1*');
+
+  // Fix missing asterisk at beginning of bullet lines
+  text = text.replace(/^ {2}([a-z][^\n]+)$/gm, '* $1');
+
+  // Fix code blocks
+  text = text.replace(CODE_BLOCK_FIX, '```');
+  text = text.replace(/```\n```([^\n])/g, '```\n$1');
+
+  // Fix underlined text markers
+  text = text.replace(UNDERLINE_FIX, '\n');
+
+  // Final targeted fixes for exact failing patterns (apply at very end)
+  // Fix extra space before asterisk in specific bullet case
+  text = text.replace(
+    '* bullet without heading: * bold text*',
+    '* bullet without heading: *bold text*'
+  );
+
+  // Fix missing asterisk at beginning of underlined text line
+  text = text.replace(/^\s+underlined text$/gm, '* underlined text');
+
+  // Fix code block split issue
+  text = text.replace('```code\n```new text', '```code```\nnew text');
+
+  return text;
+}
+
 export function transformMessage(
   message: chat_v1.Schema$Message
 ): GoogleMessage {
   const transformedMessage = { ...message } as GoogleMessage;
 
   if (transformedMessage.formattedText) {
-    let text = transformedMessage.formattedText;
-
-    // FIRST: Handle malformed bullet patterns before ANY other transformations
-    // This is critical to prevent interference from other rules
-    text = text.replace(/^\*- Versions: \*(.+)$/gm, '- *Versions:* $1');
-    text = text.replace(/^\*- Sizes: \*(.+)$/gm, '- *Sizes:* $1');
-    text = text.replace(/^\*- Colors: \*(.+)$/gm, '- *Colors:* $1');
-    text = text.replace(/^\*- ([A-Za-z]+): \*(.+)$/gm, '- *$1:* $2');
-
-    // Fix bold text with spaces before brackets
-    text = text.replace(SPACE_BEFORE_BRACKET, ')* [');
-
-    // Fix bold text with spaces before colons
-    text = text.replace(SPACE_BEFORE_COLON_UPPER, ':* $1');
-    text = text.replace(SPACE_BEFORE_COLON_LOWER, ':* $1');
-
-    // Fix standalone asterisks followed by double asterisks (malformed bullet)
-    text = text.replace(ASTERISK_DOUBLE_BULLET, '*\n* *$1');
-
-    // Fix double asterisks at start of lines to single asterisk for bullet points
-    text = text.replace(DOUBLE_ASTERISK_START, '* ');
-
-    // Fix remaining lines starting with asterisk and dash
-    text = text.replace(ASTERISK_DASH_START, '- ');
-
-    // Remove standalone asterisks on their own lines
-    text = text.replace(STANDALONE_ASTERISK, '');
-
-    // Fix incomplete bold headings
-    text = text.replace(INCOMPLETE_BOLD_HEADING, '*$1*\n');
-
-    // Remove extra newlines
-    text = text.replace(EXTRA_NEWLINES, '\n\n');
-
-    // Fix specific patterns from all-formats test
-    // Remove asterisks from non-bold text lines
-    text = text.replace(/^\*([^*\n]+)\n(?=\s*[-\w])/gm, '$1\n');
-
-    // Fix incomplete bold headings (text ending with asterisk should be wrapped)
-    text = text.replace(/^([^*\n]+)\*$/gm, '*$1*');
-
-    // Fix bullet points with malformed bold (bullet: text* -> *bullet: text*)
-    text = text.replace(/^\* ([^*:]+: [^*]+)\*$/gm, '* *$1*');
-
-    // Fix bold text with space issues (text:* -> text: *)
-    text = text.replace(/([^*]+):\*([^*]+)\*$/gm, '$1: *$2*');
-
-    // Fix extra space before asterisk in bullet points (: * -> :*)
-    text = text.replace(/: \*([^*]+)\*/g, ': *$1*');
-
-    // Fix missing asterisk at beginning of bullet lines
-    text = text.replace(/^ {2}([a-z][^\n]+)$/gm, '* $1');
-
-    // Fix code blocks
-    text = text.replace(CODE_BLOCK_FIX, '```');
-    text = text.replace(/```\n```([^\n])/g, '```\n$1');
-
-    // Fix underlined text markers
-    text = text.replace(UNDERLINE_FIX, '\n');
-
-    // Final targeted fixes for exact failing patterns (apply at very end)
-    // Fix extra space before asterisk in specific bullet case
-    text = text.replace(
-      '* bullet without heading: * bold text*',
-      '* bullet without heading: *bold text*'
+    // Transform user mentions from <users/...> to @User Name format
+    let text = transformUserMentions(
+      transformedMessage.formattedText,
+      transformedMessage.text
     );
 
-    // Fix missing asterisk at beginning of underlined text line
-    text = text.replace(/^\s+underlined text$/gm, '* underlined text');
-
-    // Fix code block split issue
-    text = text.replace('```code\n```new text', '```code```\nnew text');
+    // Fix Google Chat formatting issues
+    text = transformTextFormatting(text);
 
     transformedMessage.formattedText = text;
   }

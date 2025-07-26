@@ -26,6 +26,7 @@ describe('transformMessage', () => {
       const message: chat_v1.Schema$Message = {
         name: 'spaces/test/messages/123',
         formattedText: input,
+        text: input,
       };
 
       const result = transformMessage(message);
@@ -42,6 +43,7 @@ describe('transformMessage', () => {
       const message: chat_v1.Schema$Message = {
         name: 'spaces/test/messages/123',
         formattedText: input,
+        text: input,
       };
 
       const result = transformMessage(message);
@@ -58,6 +60,7 @@ describe('transformMessage', () => {
       const message: chat_v1.Schema$Message = {
         name: 'spaces/test/messages/123',
         formattedText: input,
+        text: input,
       };
 
       const result = transformMessage(message);
@@ -74,6 +77,7 @@ describe('transformMessage', () => {
       const message: chat_v1.Schema$Message = {
         name: 'spaces/test/messages/123',
         formattedText: input,
+        text: input,
       };
 
       const result = transformMessage(message);
@@ -90,10 +94,136 @@ describe('transformMessage', () => {
       const message: chat_v1.Schema$Message = {
         name: 'spaces/test/messages/123',
         formattedText: input,
+        text: input,
       };
 
       const result = transformMessage(message);
       expect(result.formattedText).toBe(expected);
+    });
+  });
+
+  describe('user mentions transformation', () => {
+    it('should replace single user tag with corresponding mention from text', () => {
+      const formattedText = 'Hello <users/123456789> how are you?';
+      const text = 'Hello @John Doe how are you?';
+
+      const message: chat_v1.Schema$Message = {
+        name: 'spaces/test/messages/123',
+        text,
+        formattedText,
+      };
+
+      const result = transformMessage(message);
+      expect(result.formattedText).toBe('Hello @John Doe how are you?');
+    });
+
+    it('should replace multiple user tags with corresponding mentions from text', () => {
+      const formattedText = 'Meeting with <users/123> and <users/456> tomorrow';
+      const text = 'Meeting with @Alice Smith and @Bob Johnson tomorrow';
+
+      const message: chat_v1.Schema$Message = {
+        name: 'spaces/test/messages/123',
+        text,
+        formattedText,
+      };
+
+      const result = transformMessage(message);
+      expect(result.formattedText).toBe(
+        'Meeting with @Alice Smith and @Bob Johnson tomorrow'
+      );
+    });
+
+    it('should handle user tags when no mentions exist in text', () => {
+      const formattedText = 'Hello <users/123456789> how are you?';
+      const text = 'Hello there how are you?';
+
+      const message: chat_v1.Schema$Message = {
+        name: 'spaces/test/messages/123',
+        text,
+        formattedText,
+      };
+
+      const result = transformMessage(message);
+      expect(result.formattedText).toBe('Hello <users/unknown> how are you?');
+    });
+
+    it('should handle mismatched number of user tags and mentions', () => {
+      const formattedText = 'Hello <users/123> and <users/456> and <users/789>';
+      const text = 'Hello @John Doe and @Jane Smith';
+
+      const message: chat_v1.Schema$Message = {
+        name: 'spaces/test/messages/123',
+        text,
+        formattedText,
+      };
+
+      const result = transformMessage(message);
+      expect(result.formattedText).toBe(
+        'Hello @John Doe and @Jane Smith and @John Doe'
+      );
+    });
+
+    it('should handle user mentions with complex names', () => {
+      const formattedText = 'Thanks <users/123> for the update!';
+      const text = 'Thanks @Maria Garcia-Lopez for the update!';
+
+      const message: chat_v1.Schema$Message = {
+        name: 'spaces/test/messages/123',
+        text,
+        formattedText,
+      };
+
+      const result = transformMessage(message);
+      expect(result.formattedText).toBe(
+        'Thanks @Maria Garcia-Lopez for the update!'
+      );
+    });
+
+    it('should handle user mentions with Unicode characters', () => {
+      const formattedText = 'Hello <users/123> and <users/456>!';
+      const text = 'Hello @Alan Häkkä and @María García!';
+
+      const message: chat_v1.Schema$Message = {
+        name: 'spaces/test/messages/123',
+        text,
+        formattedText,
+      };
+
+      const result = transformMessage(message);
+      expect(result.formattedText).toBe('Hello @Alan Häkkä and @María García!');
+    });
+
+    it('should work with no user tags present', () => {
+      const formattedText = 'This is a regular message with no mentions';
+      const text = 'This is a regular message with no mentions';
+
+      const message: chat_v1.Schema$Message = {
+        name: 'spaces/test/messages/123',
+        text,
+        formattedText,
+      };
+
+      const result = transformMessage(message);
+      expect(result.formattedText).toBe(
+        'This is a regular message with no mentions'
+      );
+    });
+
+    it('should combine user mention transformation with formatting fixes', () => {
+      const formattedText = '*Hello <users/123>*\n- Simple bullet point';
+      const text = '*Hello @John Smith*\n- Simple bullet point';
+
+      const message: chat_v1.Schema$Message = {
+        name: 'spaces/test/messages/123',
+        text,
+        formattedText,
+      };
+
+      const result = transformMessage(message);
+      // Should transform user mention and preserve simple formatting
+      expect(result.formattedText).toBe(
+        '*Hello @John Smith*\n- Simple bullet point'
+      );
     });
   });
 });
