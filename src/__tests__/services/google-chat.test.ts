@@ -15,212 +15,85 @@ describe('transformMessage', () => {
     expect(result.formattedText).toBeUndefined();
   });
 
-  it('Fix 1: should move asterisk from between newlines to beginning of bold text', () => {
-    const message: chat_v1.Schema$Message = {
-      name: 'spaces/test/messages/123',
-      formattedText: '\n*\nbold text*',
-    };
+  describe('fixing google chats formatting issues', () => {
+    it('bold-text-having-asterisks-space', () => {
+      const input =
+        'Below is my suggestion of our folder structure:\n\n*Client (Henrik owner)*\n- Projects\n- Proposals\n- Meeting materials\n- Meeting notes\n- Client contracts\n\n*Company (Alan owner) *[sub-structure finalized when need for this type of content arises, e.g.:]\n- Team\n- Contracts\n- Strategy\n*\n**Content (Isaac owner) *[sub-structure finalized when need for this type of content arises, e.g.:]\n- Data\n- Research\n- Nature\n\n*Finance (Alan/Henrik owner)*\n- Financial management\n- Fundraising\n*\n**Product (Alan/Markus owner) *[Feel free to build a substructure that serves you best]';
 
-    const result = transformMessage(message);
+      const expected =
+        'Below is my suggestion of our folder structure:\n\n*Client (Henrik owner)*\n- Projects\n- Proposals\n- Meeting materials\n- Meeting notes\n- Client contracts\n\n*Company (Alan owner)* [sub-structure finalized when need for this type of content arises, e.g.:]\n- Team\n- Contracts\n- Strategy\n\n* *Content (Isaac owner)* [sub-structure finalized when need for this type of content arises, e.g.:]\n- Data\n- Research\n- Nature\n\n*Finance (Alan/Henrik owner)*\n- Financial management\n- Fundraising\n\n* *Product (Alan/Markus owner)* [Feel free to build a substructure that serves you best]';
 
-    expect(result.formattedText).toBe('\n\n*bold text*');
-  });
+      const message: chat_v1.Schema$Message = {
+        name: 'spaces/test/messages/123',
+        formattedText: input,
+      };
 
-  it('Fix 1: should move underscore from between newlines to beginning of italic text', () => {
-    const message: chat_v1.Schema$Message = {
-      name: 'spaces/test/messages/123',
-      formattedText: '\n_\nitalic text_',
-    };
+      const result = transformMessage(message);
+      expect(result.formattedText).toBe(expected);
+    });
 
-    const result = transformMessage(message);
+    it('dashed-bullet-point-with-bold-text-link-having-asterisks-space', () => {
+      const input =
+        'Use the thread if you want to suggest improvements.\n\n- *<https://www.notion.so/Google-Chat-18828c93d0f681b99c10dbc8f3fdd329?pvs=4#18f28c93d0f6804bb668d3c8f532b048|Google Chat Spaces Naming Convention>: *We distinguish between team-, client-, and topic-related spaces. More details in the link.\n- *Google Drive: *Let\'s use Google Drive as a "raw bucket" for files and Notion as the main documentation structure in which we link files from Google Drive.';
 
-    expect(result.formattedText).toBe('\n\n_italic text_');
-  });
+      const expected =
+        'Use the thread if you want to suggest improvements.\n\n- *<https://www.notion.so/Google-Chat-18828c93d0f681b99c10dbc8f3fdd329?pvs=4#18f28c93d0f6804bb668d3c8f532b048|Google Chat Spaces Naming Convention>:* We distinguish between team-, client-, and topic-related spaces. More details in the link.\n- *Google Drive:* Let\'s use Google Drive as a "raw bucket" for files and Notion as the main documentation structure in which we link files from Google Drive.';
 
-  it('Fix 2: should remove orphaned leading asterisks', () => {
-    const message: chat_v1.Schema$Message = {
-      name: 'spaces/test/messages/123',
-      formattedText: '*orphaned text without closing asterisk',
-    };
+      const message: chat_v1.Schema$Message = {
+        name: 'spaces/test/messages/123',
+        formattedText: input,
+      };
 
-    const result = transformMessage(message);
+      const result = transformMessage(message);
+      expect(result.formattedText).toBe(expected);
+    });
 
-    expect(result.formattedText).toBe('orphaned text without closing asterisk');
-  });
+    it('dashed-bullet-points-with-bold-inline-heading-and-normal-text', () => {
+      const input =
+        "*Nios Logo*\nHey team (@Alan Häkkä , @Henrik Suikkanen ) -  we have a new logo. 🥳\n\nI've added the logo in <https://drive.google.com/drive/folders/1qj4vBdHAv1gWDBQdc2yqpERgTKDFIdOG|Google Drive> as\n- *Formats:* .png, .svg., and .ai (adobe illustrator)\n*- Versions: *icon (square), icon with text\n*- Sizes: *medium (256px) and large (1024px)\n*- Colors: *black and white.\n\nLet me know if you need colors and sizes.\n\n*Font*\nAs font we are using <https://fonts.google.com/specimen/Geist|Geist>. It is one of the most beloved fonts currently. Make sure to install it on your system. Also uploaded them to <https://drive.google.com/drive/folders/1I57EyyB6u3fyZao8XmOnTcjHdU-Ecvkk|Google Drive>.\n\n*Let's use the new logo and font from now on across the board.*";
 
-  it('Fix 2: should remove orphaned leading underscores', () => {
-    const message: chat_v1.Schema$Message = {
-      name: 'spaces/test/messages/123',
-      formattedText: '_orphaned text without closing underscore',
-    };
+      const expected =
+        "*Nios Logo*\nHey team (@Alan Häkkä , @Henrik Suikkanen ) -  we have a new logo. 🥳\n\nI've added the logo in <https://drive.google.com/drive/folders/1qj4vBdHAv1gWDBQdc2yqpERgTKDFIdOG|Google Drive> as\n- *Formats:* .png, .svg., and .ai (adobe illustrator)\n- *Versions:* icon (square), icon with text\n- *Sizes:* medium (256px) and large (1024px)\n- *Colors:* black and white.\n\nLet me know if you need colors and sizes.\n\n*Font*\nAs font we are using <https://fonts.google.com/specimen/Geist|Geist>. It is one of the most beloved fonts currently. Make sure to install it on your system. Also uploaded them to <https://drive.google.com/drive/folders/1I57EyyB6u3fyZao8XmOnTcjHdU-Ecvkk|Google Drive>.\n\n*Let's use the new logo and font from now on across the board.*";
 
-    const result = transformMessage(message);
+      const message: chat_v1.Schema$Message = {
+        name: 'spaces/test/messages/123',
+        formattedText: input,
+      };
 
-    expect(result.formattedText).toBe(
-      'orphaned text without closing underscore'
-    );
-  });
+      const result = transformMessage(message);
+      expect(result.formattedText).toBe(expected);
+    });
 
-  it('Fix 3: should remove standalone asterisks between newlines', () => {
-    const message: chat_v1.Schema$Message = {
-      name: 'spaces/test/messages/123',
-      formattedText: 'line 1\n*\nline 2',
-    };
+    it('headline-with-bullet-point-shifted-to-the-right', () => {
+      const input =
+        '💡Pollution data from EXIOBASE is not part of the raw data, as expected.\n\n*System Integration\n** 👍The provided data structure (<https://drive.google.com/file/d/1ZZHbnKypjzQSzjSt5zu4_liPEtVCcUOp/view?usp=drive_link|gloria_m_2021_flat.zip> and <https://drive.google.com/file/d/1BKYB-VnIIXPymDH7k7crp4EOe0VKR1DM/view?usp=drive_link|fpl_meta.zip>) can be generally used in our app by transforming them into tables in our relational database. It should take *2-3 days to integrate the data into our app*.\n';
 
-    const result = transformMessage(message);
+      const expected =
+        '💡Pollution data from EXIOBASE is not part of the raw data, as expected.\n\n*System Integration*\n* 👍The provided data structure (<https://drive.google.com/file/d/1ZZHbnKypjzQSzjSt5zu4_liPEtVCcUOp/view?usp=drive_link|gloria_m_2021_flat.zip> and <https://drive.google.com/file/d/1BKYB-VnIIXPymDH7k7crp4EOe0VKR1DM/view?usp=drive_link|fpl_meta.zip>) can be generally used in our app by transforming them into tables in our relational database. It should take *2-3 days to integrate the data into our app*.\n';
 
-    expect(result.formattedText).toBe('line 1\n\nline 2');
-  });
+      const message: chat_v1.Schema$Message = {
+        name: 'spaces/test/messages/123',
+        formattedText: input,
+      };
 
-  it('Fix 3: should remove standalone underscores between newlines', () => {
-    const message: chat_v1.Schema$Message = {
-      name: 'spaces/test/messages/123',
-      formattedText: 'line 1\n_\nline 2',
-    };
+      const result = transformMessage(message);
+      expect(result.formattedText).toBe(expected);
+    });
 
-    const result = transformMessage(message);
+    it('all-formats', () => {
+      const input =
+        '*Bullet Points*\n* bullet 1\n* bullet 2\n* *bold bullet 3*\n*\n*non-bold text with prior bold new line\n*\n*- dashed bullet 1\n- dashed bullet 2\n- dashed bullet3\n\n1. asd\n2. asd\n3. asd\n*\nNew headline with bold line*\n*\n* bullet with bold: we continue bold*\n* *bullet with heading:* this is some text\n* bullet without heading: *bold text*\n* bullet without heading\n\n*Links*\n* Pure link: https://drive.google.com \n* Described <https://mail.google.com/chat/u/0/#chat/space/AAQA7_i-uP4|link>\n\n*Formatting*\n* *Bold* with _italic_ text\n* ~superscript~\n* underlined text\n_\n_*Code Blocks*\nSome `inline` code block\n\nSeparate code block:\n```code\n```new text';
 
-    expect(result.formattedText).toBe('line 1\n\nline 2');
-  });
+      const expected =
+        '*Bullet Points*\n* bullet 1\n* bullet 2\n* *bold bullet 3*\n\nnon-bold text with prior bold new line\n\n- dashed bullet 1\n- dashed bullet 2\n- dashed bullet3\n\n1. asd\n2. asd\n3. asd\n\n*New headline with bold line*\n\n* *bullet with bold: we continue bold*\n* *bullet with heading:* this is some text\n* bullet without heading: *bold text*\n* bullet without heading\n\n*Links*\n* Pure link: https://drive.google.com \n* Described <https://mail.google.com/chat/u/0/#chat/space/AAQA7_i-uP4|link>\n\n*Formatting*\n* *Bold* with _italic_ text\n* ~superscript~\n* underlined text\n\n*Code Blocks*\nSome `inline` code block\n\nSeparate code block:\n```code```\nnew text';
 
-  it('Fix 4: should add newline after closing code block when followed by text', () => {
-    const message: chat_v1.Schema$Message = {
-      name: 'spaces/test/messages/123',
-      formattedText: '\n```code\n```new text',
-    };
+      const message: chat_v1.Schema$Message = {
+        name: 'spaces/test/messages/123',
+        formattedText: input,
+      };
 
-    const result = transformMessage(message);
-
-    expect(result.formattedText).toBe('\n```code\n```\nnew text');
-  });
-
-  it('Fix 4: should handle the specific case from import.json', () => {
-    const message: chat_v1.Schema$Message = {
-      name: 'spaces/test/messages/123',
-      formattedText: 'Separate code block:\n```code\n```new text',
-    };
-
-    const result = transformMessage(message);
-
-    expect(result.formattedText).toBe(
-      'Separate code block:\n```code\n```\nnew text'
-    );
-  });
-
-  it('Fix 4: should not modify properly formatted code blocks', () => {
-    const message: chat_v1.Schema$Message = {
-      name: 'spaces/test/messages/123',
-      formattedText:
-        'Some `inline` code\n\nSeparate code block:\n```\ncode here\n```\n\nMore text after',
-    };
-
-    const result = transformMessage(message);
-
-    // Should remain unchanged since it's already properly formatted
-    expect(result.formattedText).toBe(
-      'Some `inline` code\n\nSeparate code block:\n```\ncode here\n```\n\nMore text after'
-    );
-  });
-
-  it('should handle the underscore case: \\n_\\n_*Code Blocks*', () => {
-    const message: chat_v1.Schema$Message = {
-      name: 'spaces/test/messages/123',
-      formattedText: '\n_\n_*Code Blocks*',
-    };
-
-    const result = transformMessage(message);
-
-    // Let's debug what we actually get
-    console.log('Input:', JSON.stringify(message.formattedText));
-    console.log('Output:', JSON.stringify(result.formattedText));
-
-    expect(result.formattedText).toBe('\n\n*Code Blocks*');
-  });
-
-  it('Debug: should remove leading underscore from line starting with _*', () => {
-    const message: chat_v1.Schema$Message = {
-      name: 'spaces/test/messages/123',
-      formattedText: '_*Code Blocks*',
-    };
-
-    const result = transformMessage(message);
-
-    console.log('Simple Input:', JSON.stringify(message.formattedText));
-    console.log('Simple Output:', JSON.stringify(result.formattedText));
-
-    expect(result.formattedText).toBe('*Code Blocks*');
-  });
-
-  it('should handle mixed asterisk and underscore formatting', () => {
-    const message: chat_v1.Schema$Message = {
-      name: 'spaces/test/messages/123',
-      formattedText:
-        '\n*\nbold text* and \n_\nitalic text_ with *orphaned asterisk and _orphaned underscore',
-    };
-
-    const result = transformMessage(message);
-
-    // Fix 1 moves format chars from between newlines to beginning of text
-    // Fix 2 only removes orphaned format chars at the beginning of lines (not in middle of text)
-    // Fix 3 removes standalone format chars between newlines
-    expect(result.formattedText).toBe(
-      '\n\n*bold text* and \n\n_italic text_ with *orphaned asterisk and _orphaned underscore'
-    );
-  });
-
-  it('should handle all fixes in combination with real import.json data', () => {
-    // This is the corrected formattedText from import.json after all fixes are applied
-    const inputFormattedText = `*Bullet Points*
-* bullet 1
-* bullet 2
-* *bold bullet 3*
-
-non-bold text with prior bold new line
-
-- dashed bullet 1
-- dashed bullet 2
-- dashed bullet3
-
-1. asd
-2. asd
-3. asd
-
-*New headline with bold line*
-
-* bullet with bold: we continue bold*
-* *bullet with heading: *this is some text
-* bullet without heading: *bold text*
-* bullet without heading
-
-*Links*
-* Pure link: https://drive.google.com 
-* Described <https://mail.google.com/chat/u/0/#chat/space/AAQA7_i-uP4|link>
-
-*Formatting*
-* *Bold* with _italic_ text
-* ~superscript~
-* underlined text`;
-
-    const message: chat_v1.Schema$Message = {
-      name: 'spaces/test/messages/123',
-      formattedText: inputFormattedText,
-    };
-
-    const result = transformMessage(message);
-
-    // This should match the expected output from import.json
-    expect(result.formattedText).toContain('*Bullet Points*');
-    expect(result.formattedText).toContain('* bullet 1');
-    expect(result.formattedText).toContain('* *bold bullet 3*');
-    expect(result.formattedText).toContain('*New headline with bold line*');
-    expect(result.formattedText).toContain(
-      '* bullet without heading: *bold text*'
-    );
-    expect(result.formattedText).toContain('*Links*');
-    expect(result.formattedText).toContain('*Formatting*');
-    expect(result.formattedText).toContain('* *Bold* with _italic_ text');
-
-    // Ensure the result matches the expected corrected format
-    expect(result.formattedText).toBe(inputFormattedText);
+      const result = transformMessage(message);
+      expect(result.formattedText).toBe(expected);
+    });
   });
 });

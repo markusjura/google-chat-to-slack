@@ -31,8 +31,6 @@ next-env.d.ts
 # data
 data
 
-# claude code
+# ai
+ai/
 .claude/settings.local.json
-
-# ClaudPoint checkpoint system
-.checkpoints/
