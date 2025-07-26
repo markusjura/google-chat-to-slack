@@ -6,6 +6,7 @@ import type {
   SlackChannel,
   SlackConversationsListResponse,
   SlackImportAttachment,
+  SlackImportChannel,
   SlackImportData,
   SlackImportMessage,
 } from '../types/slack';
@@ -207,7 +208,8 @@ async function resolveChannelIdByName(
 async function findOrCreateSlackChannel(
   slack: WebClient,
   name: string,
-  isPrivate: boolean
+  isPrivate: boolean,
+  purpose?: string
 ): Promise<SlackChannel> {
   // Check if 'name' is actually a Slack channel ID (starts with 'C')
   if (name.startsWith('C')) {
@@ -216,11 +218,13 @@ async function findOrCreateSlackChannel(
 
   // First try to find existing channel
   let channel = await findSlackChannelByName(slack, name);
+  let isNewChannel = false;
 
   if (!channel) {
     // Try to create new channel if not found
     try {
       channel = await createSlackChannel(slack, name, isPrivate);
+      isNewChannel = true;
     } catch (error: any) {
       // If channel creation fails with 'name_taken', the channel exists but we couldn't find it
       if (
@@ -234,6 +238,21 @@ async function findOrCreateSlackChannel(
         return { id: name, name } as SlackChannel;
       }
       throw error;
+    }
+  }
+
+  // Set purpose if provided and this is a newly created channel
+  if (purpose && isNewChannel && channel.id) {
+    try {
+      await withSlackRateLimit(async () =>
+        slack.conversations.setPurpose({
+          channel: channel.id,
+          purpose: purpose.substring(0, 250), // Slack limit is 250 characters
+        })
+      );
+    } catch (error) {
+      // Don't fail the whole operation if setting purpose fails, just log it
+      console.warn(`Failed to set channel purpose for #${name}:`, error);
     }
   }
 
@@ -520,11 +539,7 @@ async function performDryRun(slack: WebClient): Promise<void> {
 
 async function processChannel(
   slack: WebClient,
-  channelData: {
-    name: string;
-    is_private: boolean;
-    messages: SlackImportMessage[];
-  },
+  channelData: SlackImportChannel,
   logger: Logger,
   channelPrefix?: string
 ): Promise<void> {
@@ -541,7 +556,8 @@ async function processChannel(
   const channel = await findOrCreateSlackChannel(
     slack,
     channelName,
-    channelData.is_private
+    channelData.is_private,
+    channelData.purpose
   );
 
   // Process messages with progress bar

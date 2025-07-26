@@ -387,8 +387,7 @@ function createSlackChannel(
   return {
     name: normalizeChannelName(space.displayName),
     is_private: space.spaceType === 'DM',
-    topic: `Migrated from Google Chat space: ${space.displayName}`,
-    purpose: `Chat history imported from Google Chat on ${new Date().toLocaleDateString()}`,
+    purpose: space.spaceDetails?.description,
     messages,
   };
 }

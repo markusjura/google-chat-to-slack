@@ -5,6 +5,10 @@ export interface Space {
   name: string;
   displayName: string;
   spaceType: 'SPACE' | 'DM';
+  spaceDetails?: {
+    description?: string;
+    guidelines?: string;
+  };
 }
 
 export interface GoogleMessage {
