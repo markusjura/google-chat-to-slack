@@ -203,10 +203,10 @@ async function findOrCreateSlackChannel(
 async function uploadAndPostMessageWithAttachments(
   slack: WebClient,
   channelId: string,
-  messageText: string,
   attachments: SlackImportAttachment[],
   threadTs: string | undefined,
-  logger: Logger
+  logger: Logger,
+  messageText?: string
 ): Promise<void> {
   // Step 1: Process each file sequentially to maintain order
   const uploadData: Array<{
@@ -271,13 +271,14 @@ async function uploadAndPostMessageWithAttachments(
   }
 
   // Step 3: Complete the upload and post message with attachments
+  // Only include initial_comment if messageText is defined
   const completeParams: any = {
     files: uploadData.map(({ fileId, attachment }) => ({
       id: fileId,
       title: attachment.title || attachment.filename,
     })),
     channel_id: channelId,
-    initial_comment: messageText,
+    ...(messageText ? { initial_comment: messageText } : {}),
   };
 
   if (threadTs) {
@@ -385,11 +386,10 @@ async function postSlackMessage(
         message.thread_ts
       );
 
-      // Step 2: Post attachments as a reply to the text message
+      // Step 2: Post attachments without text as a reply to the text message
       await uploadAndPostMessageWithAttachments(
         slack,
         channelId,
-        messageText,
         message.attachments,
         messageTs,
         logger
@@ -399,10 +399,10 @@ async function postSlackMessage(
       await uploadAndPostMessageWithAttachments(
         slack,
         channelId,
-        messageText,
         message.attachments,
         message.thread_ts,
-        logger
+        logger,
+        messageText
       );
       // For sub-messages with attachments, we don't return a messageTs since it's not the thread parent
       messageTs = undefined;
