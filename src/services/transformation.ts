@@ -255,7 +255,6 @@ function processSpaceUsers(
 ): void {
   for (const message of space.messages) {
     processMessageSender(message, userMap);
-    processMessageMentions(message, userMap);
   }
 }
 
@@ -269,29 +268,6 @@ function processMessageSender(
       userMap.set(key, message.sender);
     }
   }
-}
-
-function processMessageMentions(
-  message: GoogleMessage,
-  userMap: Map<string, User>
-): void {
-  if (!message.annotations) {
-    return;
-  }
-
-  for (const annotation of message.annotations) {
-    if (isUserMention(annotation)) {
-      const user = annotation.userMention.user;
-      const key = user.name;
-      if (key) {
-        userMap.set(key, user);
-      }
-    }
-  }
-}
-
-function isUserMention(annotation: any): boolean {
-  return annotation.type === 'USER_MENTION' && annotation.userMention?.user;
 }
 
 function createUserMappings(
