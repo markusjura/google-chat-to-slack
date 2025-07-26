@@ -1,4 +1,4 @@
-import { Presets, SingleBar } from 'cli-progress';
+import { MultiBar, Presets, SingleBar } from 'cli-progress';
 
 export class ProgressBar {
   private bar: SingleBar;
@@ -35,6 +35,52 @@ export class ProgressBar {
   finish(): void {
     this.bar.stop();
     // Ensure clean terminal state after progress bar
+    process.stdout.write('\n');
+  }
+}
+
+export class MultiChannelProgressManager {
+  private multiBar: MultiBar;
+  private channelBars: Map<string, SingleBar> = new Map();
+
+  constructor() {
+    this.multiBar = new MultiBar(
+      {
+        hideCursor: true,
+        clearOnComplete: true,
+        forceRedraw: true,
+        format: '{channel} [{bar}] {value}/{total} messages',
+        barCompleteChar: '█',
+        barIncompleteChar: '░',
+      },
+      Presets.rect
+    );
+  }
+
+  addChannel(channelName: string, total: number): void {
+    const bar = this.multiBar.create(total, 0, {
+      channel: `#${channelName}`.padEnd(20, ' '),
+    });
+    this.channelBars.set(channelName, bar);
+  }
+
+  updateChannel(channelName: string, current: number): void {
+    const bar = this.channelBars.get(channelName);
+    if (bar) {
+      bar.update(current);
+    }
+  }
+
+  incrementChannel(channelName: string): void {
+    const bar = this.channelBars.get(channelName);
+    if (bar) {
+      bar.increment();
+    }
+  }
+
+  finish(): void {
+    this.multiBar.stop();
+    // Ensure clean terminal state after progress bars
     process.stdout.write('\n');
   }
 }

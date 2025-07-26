@@ -11,7 +11,10 @@ import type {
   SlackImportMessage,
 } from '../types/slack';
 import { Logger } from '../utils/logger';
-import { ProgressBar } from '../utils/progress-bar';
+import {
+  MultiChannelProgressManager,
+  ProgressBar,
+} from '../utils/progress-bar';
 import {
   createTokenBucket,
   SLACK_API_ENDPOINTS,
@@ -555,6 +558,7 @@ async function processChannel(
   slack: WebClient,
   channelData: SlackImportChannel,
   logger: Logger,
+  progressManager?: MultiChannelProgressManager,
   channelPrefix?: string
 ): Promise<void> {
   const originalChannelName = channelData.name;
@@ -562,9 +566,12 @@ async function processChannel(
     ? `${channelPrefix}${originalChannelName}`
     : originalChannelName;
 
-  console.log(
-    `\nProcessing channel: #${originalChannelName}${channelPrefix ? ` → #${channelName}` : ''}`
-  );
+  // Only show individual channel processing message when using single progress bar
+  if (!progressManager) {
+    console.log(
+      `\nProcessing channel: #${originalChannelName}${channelPrefix ? ` → #${channelName}` : ''}`
+    );
+  }
 
   // Find or create channel
   const channel = await findOrCreateSlackChannel(
@@ -574,15 +581,18 @@ async function processChannel(
     channelData.purpose
   );
 
-  // Process messages with progress bar
-  const progressBar = new ProgressBar(
-    channelData.messages.length,
-    `Importing messages to #${channel.name}`
-  );
-
   // Map threadId to first message's Slack timestamp for threading
   const threadMap = new Map<string, string>();
   let processedCount = 0;
+
+  // Use multi-channel progress manager if available, otherwise fallback to single progress bar
+  let progressBar: ProgressBar | undefined;
+  if (!progressManager) {
+    progressBar = new ProgressBar(
+      channelData.messages.length,
+      `Importing messages to #${channel.name}`
+    );
+  }
 
   for (const message of channelData.messages) {
     let threadTs: string | undefined;
@@ -620,10 +630,19 @@ async function processChannel(
     }
 
     processedCount++;
-    progressBar.update(processedCount);
+
+    // Update progress - use multi-channel manager if available, otherwise single bar
+    if (progressManager) {
+      progressManager.updateChannel(originalChannelName, processedCount);
+    } else {
+      progressBar?.update(processedCount);
+    }
   }
 
-  progressBar.finish();
+  // Finish progress bar only if using single bar mode
+  if (!progressManager) {
+    progressBar?.finish();
+  }
 }
 
 function displayImportSummary(
@@ -776,10 +795,39 @@ export async function importSlackData(
       })
     : importData.channels;
 
-  // Process each channel
-  for (const channelData of channelsToProcess) {
-    // biome-ignore lint/nursery/noAwaitInLoop: Channels must be processed sequentially to manage rate limits properly
-    await processChannel(slack, channelData, logger, channelPrefix);
+  // Process channels concurrently - safe with per-channel rate limiting
+  console.log(
+    `\nProcessing ${channelsToProcess.length} channels concurrently:`
+  );
+
+  // Create multi-channel progress manager for concurrent processing
+  const progressManager =
+    channelsToProcess.length > 1
+      ? new MultiChannelProgressManager()
+      : undefined;
+
+  // Initialize progress bars for each channel
+  if (progressManager) {
+    for (const channelData of channelsToProcess) {
+      progressManager.addChannel(channelData.name, channelData.messages.length);
+    }
+  }
+
+  await Promise.all(
+    channelsToProcess.map(async (channelData) => {
+      await processChannel(
+        slack,
+        channelData,
+        logger,
+        progressManager,
+        channelPrefix
+      );
+    })
+  );
+
+  // Finish progress manager if used
+  if (progressManager) {
+    progressManager.finish();
   }
 
   // Display summary
