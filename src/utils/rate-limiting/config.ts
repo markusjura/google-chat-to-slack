@@ -8,8 +8,8 @@ import { API_SERVICES } from './types';
 // Default rate limit configurations based on API documentation
 const DEFAULT_CONFIGS: Record<ApiService, RateLimitConfig> = {
   [API_SERVICES.GOOGLE_CHAT]: {
-    capacity: 50, // Burst capacity
-    refillRate: 50, // 50 requests per second (3000/minute with buffer)
+    capacity: 15, // Per-space burst capacity (900 reads per 60s = 15/sec)
+    refillRate: 12, // Conservative 12 requests per second (well under per-space limit of 15/sec)
     maxRetries: 5,
     baseDelayMs: 1000, // 1 second base delay
     maxDelayMs: 30_000, // 30 second max delay
@@ -33,8 +33,8 @@ const DEFAULT_CONFIGS: Record<ApiService, RateLimitConfig> = {
 // Export command configurations
 export const EXPORT_RATE_LIMITS: CommandRateLimits = {
   googleChat: {
-    capacity: 100, // Higher burst for export operations
-    refillRate: 45, // Slightly more conservative for bulk operations
+    capacity: 10, // Conservative burst for per-space limits
+    refillRate: 8, // Very conservative for attachment downloads (per-space limit is 15/sec)
   },
   googleDirectory: {
     refillRate: 1.2, // More conservative for user lookups

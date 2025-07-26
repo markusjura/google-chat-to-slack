@@ -675,18 +675,20 @@ async function processMessageAttachments(
 
   const messageId = message.name.split('/').pop() || 'unknown';
 
-  const results = await Promise.all(
-    attachmentsToProcess.map(async (attachment, index) =>
-      processAttachment(
-        attachment,
-        index,
-        messageId,
-        attachmentsDir,
-        isDryRun,
-        logger
-      )
-    )
-  );
+  // Process attachments sequentially to respect rate limits
+  const results: boolean[] = [];
+  for (const [index, attachment] of attachmentsToProcess.entries()) {
+    // biome-ignore lint/nursery/noAwaitInLoop: Sequential processing required for rate limiting
+    const result = await processAttachment(
+      attachment,
+      index,
+      messageId,
+      attachmentsDir,
+      isDryRun,
+      logger
+    );
+    results.push(result);
+  }
 
   return {
     processed: attachmentsToProcess.length,
@@ -1013,22 +1015,23 @@ export async function exportGoogleChatData(
       spaceOverviews.map(async (overview) => {
         const { space, messages } = overview;
 
-        const messageResults = await Promise.all(
-          messages.map(async (message) => {
-            const result = await processMessage(
-              message,
-              attachmentsDir,
-              dryRun,
-              logger,
-              uniqueUserIds
-            );
+        // Process messages sequentially to respect attachment download rate limits
+        const messageResults: ProcessMessageResult[] = [];
+        for (const message of messages) {
+          // biome-ignore lint/nursery/noAwaitInLoop: Sequential processing required for rate limiting
+          const result = await processMessage(
+            message,
+            attachmentsDir,
+            dryRun,
+            logger,
+            uniqueUserIds
+          );
 
-            // Update progress with safe increment for concurrent operations
-            progressBar?.safeIncrement();
+          // Update progress with safe increment for sequential operations
+          progressBar?.safeIncrement();
 
-            return result;
-          })
-        );
+          messageResults.push(result);
+        }
 
         // Aggregate statistics for this space
         for (const result of messageResults) {
