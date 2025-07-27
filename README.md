@@ -1,5 +1,9 @@
 # Google Chat to Slack Migrator
 
+[![npm version](https://badge.fury.io/js/google-chat-to-slack.svg)](https://www.npmjs.com/package/google-chat-to-slack)
+[![npm downloads](https://img.shields.io/npm/dm/google-chat-to-slack.svg)](https://www.npmjs.com/package/google-chat-to-slack)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A CLI tool for migrating channels, messages, threads, attachments, and reactions from Google Chat to Slack.
 
 ## Features
