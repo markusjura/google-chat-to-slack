@@ -308,7 +308,3 @@ pnpm start import --dry-run
 ## License
 
 MIT - See [LICENSE](LICENSE) file for details.
-
-## Support
-
-- [Issues](https://github.com/markusjura/google-chat-to-slack/issues) - Bug reports and feature requests
