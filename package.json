@@ -1,7 +1,7 @@
 {
   "name": "google-chat-to-slack",
   "version": "1.0.0",
-  "description": "Migrates channels, threads, and messages, attachments and reactions from Google Chat to Slack.",
+  "description": "Migrates channels, threads, messages, attachments, and reactions from Google Chat to Slack.",
   "main": "dist/index.js",
   "bin": {
     "googletoslack": "./dist/bin/googletoslack.js"
@@ -57,7 +57,7 @@
     "type": "git",
     "url": "git+https://github.com/markusjura/google-chat-to-slack.git"
   },
-  "homepage": "https://github.com/markusjura/google-chat-to-slack#readme",
+  "homepage": "https://github.com/markusjura/google-chat-to-slack",
   "bugs": {
     "url": "https://github.com/markusjura/google-chat-to-slack/issues"
   },
