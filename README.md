@@ -6,11 +6,13 @@
 
 A CLI tool for migrating channels, messages, threads, attachments, and reactions from Google Chat to Slack.
 
+<img width="958" height="520" alt="migrate-example" src="https://github.com/user-attachments/assets/9c493830-554a-40d4-ae6a-fa6b6efdb46b" />
+
 ## Features
 
 - **Complete Migration**: Export all channels, messages, threads, attachments, and reactions
 - **Selective Migration**: Choose specific spaces/channels to migrate
-- **User Mentions**: Preserves user mentions in a message (as text, not creating the users itself)
+- **User Mentions**: Preserves user mentions in a message (as text, not creating the users themselves)
 - **Rate Limited**: Respects both Google Chat and Slack API limits
 - **Channel Management**: Rename and organize channels during import
 - **Three-Stage Pipeline**: Export → Transform → Import for reliability
