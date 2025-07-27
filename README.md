@@ -35,21 +35,124 @@ googletoslack import
 
 ## Setup & Configuration
 
-> **Note**: Detailed authentication setup guide coming soon. You'll need:
->
-> - Google Chat: OAuth2 credentials with Google Directory API access
-> - Slack: Bot token with appropriate permissions
+### Quick Reference
 
-### Google Chat Requirements
+**Google Chat Requirements:**
 
-- Google Cloud Console project with Chat API enabled
-- OAuth2 client credentials
-- Domain admin privileges for user resolution
+- Google Workspace admin access
+- APIs:
+  - Google Chat
+  - Admin SDK Directory
+  - Google Drive
+- OAuth2 scopes:
+  - `chat.spaces.readonly`
+  - `chat.messages.readonly`
+  - `drive.readonly`
+  - `admin.directory.user.readonly`
+- Environment variables:
+  - `GOOGLE_CLIENT_ID`
+  - `GOOGLE_CLIENT_SECRET`
 
-### Slack Requirements
+**Slack Requirements:**
 
-- Slack app with bot token
-- Required permissions: `chat:write`, `files:write`, `channels:read`, `channels:manage`
+- Slack workspace admin access
+- Bot token scopes:
+  - `chat:write`
+  - `files:write`
+  - `channels:read`
+  - `channels:manage`
+  - `reactions:write`
+- Environment variables:
+  - `SLACK_BOT_TOKEN`
+
+### Detailed Setup Guide
+
+#### Google Cloud Console Setup
+
+1. **Enable Required APIs** in your Google Cloud project:
+   - [Google Chat API](https://console.cloud.google.com/apis/library/chat.googleapis.com)
+   - [Admin SDK Directory API](https://console.cloud.google.com/apis/library/admin.googleapis.com)
+   - [Google Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com)
+
+2. **Configure OAuth Consent Screen:**
+   - Go to [APIs & Services > OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent)
+   - Select user type: "Internal" (for Google Workspace orgs) or "External" (for personal use)
+   - In [Branding](https://console.cloud.google.com/auth/branding), fill in app name, user support email, and developer contact information
+
+3. **Add Required OAuth Scopes:**
+   - Go to [APIs & Services > Data Access](https://console.cloud.google.com/auth/scopes)
+   - Click "Add or remove scopes"
+   - Add these scopes (they must match the ones in Quick Reference above):
+     - `https://www.googleapis.com/auth/chat.spaces.readonly`
+     - `https://www.googleapis.com/auth/chat.messages.readonly`
+     - `https://www.googleapis.com/auth/drive.readonly`
+     - `https://www.googleapis.com/auth/admin.directory.user.readonly`
+   - Click "Update" to save the scopes
+
+4. **Create OAuth2 Client:**
+   - Go to [APIs & Services > Clients](https://console.cloud.google.com/auth/clients)
+   - Click "Create OAuth client ID"
+   - Select "Desktop application" (for CLI tools)
+   - Enter a name for your OAuth client
+   - Click "Create" to get your `client_id` and `client_secret`
+   - Copy both values for environment variable setup
+
+#### Slack App Setup
+
+1. **Create Slack App**:
+   - Go to [Your Apps](https://api.slack.com/apps) → "Create New App" → "From scratch"
+   - Enter app name and select your workspace
+
+2. **Configure Bot Token Scopes**:
+   - Go to "OAuth & Permissions" in sidebar
+   - Under `Scopes > Bot Token Scopes`, add these [scopes](https://api.slack.com/scopes):
+     - `channels:manage` (Create channels)
+     - `channels:read` (View channels)
+     - `chat:write` (Send messages)
+     - `files:write` (Upload files)
+     - `reactions:write` (Add emoji reactions)
+
+3. **Install App**:
+   - Click "Install to Workspace" at the top
+   - Review permissions and click "Allow"
+
+4. **Get Bot User OAuth Token**:
+   - Go to "OAuth & Permissions" in sidebar
+   - Copy the `OAuth Tokens > Bot User OAuth Token` for environment variable setup (starts with `xoxb-`)
+
+#### Environment Variables Setup
+
+For global npm package usage, set environment variables using one of these methods:
+
+**Option 1: Environment variables (temporary)**
+
+```bash
+export GOOGLE_CLIENT_ID="your_google_client_id"
+export GOOGLE_CLIENT_SECRET="your_google_client_secret"
+export SLACK_BOT_TOKEN="xoxb-your-slack-bot-token"
+```
+
+**Option 2: Config file (persistent)**
+
+Create a config file in the `~/.config/googletoslack` directory:
+
+```bash
+mkdir -p ~/.config/googletoslack
+cat > ~/.config/googletoslack/config << EOF
+GOOGLE_CLIENT_ID="your_google_client_id"
+GOOGLE_CLIENT_SECRET="your_google_client_secret"
+SLACK_BOT_TOKEN="xoxb-your-slack-bot-token"
+EOF
+```
+
+**Verify Setup:**
+
+```bash
+echo $GOOGLE_CLIENT_ID
+echo $SLACK_BOT_TOKEN
+googletoslack login google-chat  # Test Google authentication
+googletoslack login slack        # Test Slack authentication
+```
 
 ## Commands
 
@@ -106,9 +209,9 @@ googletoslack export --output /custom/path
 
 The export creates:
 
-- `data/export/export.json` - Complete message data
-- `data/export/attachments/` - Downloaded files
-- `data/export/avatars/` - User profile images
+- `~/.config/googletoslack/data/export/export.json` - Complete message data
+- `~/.config/googletoslack/data/export/attachments/` - Downloaded files
+- `~/.config/googletoslack/data/export/avatars/` - User profile images
 
 #### Transform
 
@@ -151,11 +254,12 @@ googletoslack import --channel-rename "old-name=new-name"
 
 ## Data Handling
 
-- **Attachments**: Downloaded locally, then uploaded to Slack
+- **Attachments**: Downloaded to `~/.config/googletoslack/data/`, then uploaded to Slack
 - **User mentions**: Mapped via Google Directory API
 - **Timestamps**: Preserved when possible (Slack API limitations apply)
 - **Reactions**: Migrated with closest Slack emoji equivalent
 - **Threads**: Full thread structure maintained
+- **Data location**: All migration data stored in `~/.config/googletoslack/data/` (export and import directories)
 
 ## Contributing
 
