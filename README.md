@@ -318,7 +318,7 @@ This package is published to [npmjs.com](https://www.npmjs.com/package/google-ch
 1. Update version and create git tag:
 
    ```bash
-   npm version patch  # or minor/major
+   npm version patch
    ```
 
 2. Push the tag to trigger automated publishing:
@@ -328,13 +328,6 @@ This package is published to [npmjs.com](https://www.npmjs.com/package/google-ch
    ```
 
 The GitHub Actions workflow will automatically build, test, and publish to npm.
-
-#### Setup for Maintainers
-
-To enable automated publishing, add an `NPM_TOKEN` secret to GitHub repository settings:
-
-1. Generate an npm access token at [npmjs.com/settings/tokens](https://www.npmjs.com/settings/tokens)
-2. Add it as `NPM_TOKEN` in repository Settings → Secrets and variables → Actions
 
 ## License
 
