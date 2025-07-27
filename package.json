@@ -52,7 +52,7 @@
     "google workspace"
   ],
   "author": "Markus Jura",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/markusjura/google-chat-to-slack.git"
