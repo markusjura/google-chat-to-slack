@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { CommandModule } from 'yargs';
 import { exportGoogleChatData } from '../../services/google-chat';
+import { getDefaultExportDirectory } from '../../utils/data-directory';
 import {
   configureForExport,
   EXPORT_RATE_LIMITS,
@@ -27,7 +28,7 @@ export const exportCommand: CommandModule<object, ExportArgs> = {
       .option('output', {
         describe: 'The path to the output directory',
         type: 'string',
-        default: 'data/export',
+        default: getDefaultExportDirectory(),
       })
       .option('dry-run', {
         describe: 'Perform a dry run, exporting only one message per space',

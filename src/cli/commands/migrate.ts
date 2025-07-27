@@ -5,6 +5,7 @@ import type { CommandModule } from 'yargs';
 import { exportGoogleChatData } from '../../services/google-chat';
 import { importSlackData, loginToSlack } from '../../services/slack';
 import { transformGoogleChatToSlack } from '../../services/transformation';
+import { getDataDirectory } from '../../utils/data-directory';
 
 interface Args {
   channel?: string | string[];
@@ -29,7 +30,7 @@ export const migrateCommand: CommandModule<object, Args> = {
       .option('output', {
         type: 'string',
         describe: 'Base output directory for migration data',
-        default: 'data',
+        default: getDataDirectory(),
       })
       .option('dry-run', {
         type: 'boolean',
@@ -77,7 +78,7 @@ export const migrateCommand: CommandModule<object, Args> = {
     try {
       const {
         channel,
-        output = 'data',
+        output = getDataDirectory(),
         'dry-run': isDryRun,
         'channel-prefix': channelPrefix,
         'channel-rename': channelRename,

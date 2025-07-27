@@ -1,20 +1,10 @@
 import { mkdir } from 'node:fs/promises';
-import path from 'node:path';
 import type { CommandModule } from 'yargs';
 import { transformGoogleChatToSlack } from '../../services/transformation';
-
-function getExportDirectory(): string | undefined {
-  const exportDir = path.resolve('data/export');
-  const fs = require('node:fs');
-
-  try {
-    return fs.existsSync(exportDir) && fs.statSync(exportDir).isDirectory()
-      ? exportDir
-      : undefined;
-  } catch {
-    return;
-  }
-}
+import {
+  findExistingExportDirectory,
+  getDefaultImportDirectory,
+} from '../../utils/data-directory';
 
 type TransformArgs = {
   input?: string;
@@ -54,7 +44,7 @@ export const transformCommand: CommandModule<object, TransformArgs> = {
     // Determine input directory
     let inputDir = argv.input;
     if (!inputDir) {
-      const exportDir = getExportDirectory();
+      const exportDir = findExistingExportDirectory();
       if (!exportDir) {
         console.error(
           'No export directory found. Please run export first or specify --input'
@@ -68,7 +58,7 @@ export const transformCommand: CommandModule<object, TransformArgs> = {
     // Determine output directory
     let outputDir = argv.output;
     if (!outputDir) {
-      outputDir = path.resolve('data/import');
+      outputDir = getDefaultImportDirectory();
     }
 
     try {

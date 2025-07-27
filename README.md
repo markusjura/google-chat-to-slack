@@ -21,7 +21,7 @@ npm install -g google-chat-to-slack
 
 ```bash
 # 1. Authenticate with both services
-googletoslack login google-chat
+googletoslack login google
 googletoslack login slack
 
 # 2. Run complete migration
@@ -150,8 +150,8 @@ EOF
 ```bash
 echo $GOOGLE_CLIENT_ID
 echo $SLACK_BOT_TOKEN
-googletoslack login google-chat  # Test Google authentication
-googletoslack login slack        # Test Slack authentication
+googletoslack login google  # Test Google authentication
+googletoslack login slack   # Test Slack authentication
 ```
 
 ## Commands
@@ -159,14 +159,14 @@ googletoslack login slack        # Test Slack authentication
 ### Authentication
 
 ```bash
-# Login to Google Chat (opens browser for OAuth)
-googletoslack login google-chat
+# Login to Google (opens browser for OAuth)
+googletoslack login google
 
 # Login to Slack (interactive bot token setup)
 googletoslack login slack
 
 # Logout from services
-googletoslack logout google-chat
+googletoslack logout google
 googletoslack logout slack
 ```
 

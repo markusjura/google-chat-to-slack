@@ -1,23 +1,11 @@
 import path from 'node:path';
 import type { CommandModule } from 'yargs';
 import { importSlackData } from '../../services/slack';
+import { findExistingImportDirectory } from '../../utils/data-directory';
 import {
   configureForImport,
   IMPORT_RATE_LIMITS,
 } from '../../utils/rate-limiting';
-
-function getImportDirectory(): string | undefined {
-  const importDir = path.resolve('data/import');
-  const fs = require('node:fs');
-
-  try {
-    return fs.existsSync(importDir) && fs.statSync(importDir).isDirectory()
-      ? importDir
-      : undefined;
-  } catch {
-    return;
-  }
-}
 
 function validateChannelsAndRenames(
   inputDir: string,
@@ -168,7 +156,7 @@ export const importCommand: CommandModule<object, ImportArgs> = {
     // Determine input directory
     let inputDir = argv.input;
     if (!inputDir) {
-      const importDir = getImportDirectory();
+      const importDir = findExistingImportDirectory();
       if (!importDir) {
         console.error(
           'No import directory found. Please run transform first or specify --input'

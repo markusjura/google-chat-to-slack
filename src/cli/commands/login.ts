@@ -29,12 +29,19 @@ export const loginCommand: CommandModule<object, LoginArgs> = {
         process.exit(1);
       }),
   handler: async (argv) => {
-    if (argv.provider === 'google') {
-      await loginToGoogle();
-    } else if (argv.provider === 'slack') {
-      await loginToSlack();
-    } else {
-      console.error(`Unsupported provider: ${argv.provider}`);
+    try {
+      if (argv.provider === 'google') {
+        await loginToGoogle();
+      } else if (argv.provider === 'slack') {
+        await loginToSlack();
+      } else {
+        console.error(`Unsupported provider: ${argv.provider}`);
+        process.exit(1);
+      }
+      // Clean exit after successful login
+      process.exit(0);
+    } catch (error) {
+      console.error('Login failed:', error);
       process.exit(1);
     }
   },
